@@ -21,9 +21,11 @@
 #include <openssl/aes.h>
 
 typedef struct {
-    char* entity_id;
+    char* entity_name;
+    int entity_id;
     EVP_PKEY* private_key;
     EVP_PKEY* public_key;
+    EVP_PKEY* rsa_key;
     unsigned char* gmac;
     size_t gmac_len;
     time_t generation_timestamp;
@@ -35,6 +37,23 @@ typedef struct PubKeyMAC {
     ASN1_OCTET_STRING* MACValue;
 } PubKeyMAC;
 
+typedef struct SymElements {
+    ASN1_INTEGER* SymElementsID;
+    ASN1_OCTET_STRING* SymKey;
+    ASN1_OCTET_STRING* IV;
+}SymElements;
+
+typedef struct Transaction
+{
+    ASN1_INTEGER* TransactionID;
+    ASN1_PRINTABLESTRING* Subject;
+    ASN1_INTEGER* SenderID;
+    ASN1_INTEGER* ReceiverID;
+    ASN1_INTEGER* SymElementsID;
+    ASN1_OCTET_STRING* EncryptedData;
+    ASN1_OCTET_STRING* TransactionSign;
+}Transaction;
+
 ASN1_SEQUENCE(PubKeyMAC) = {
     ASN1_SIMPLE(PubKeyMAC, PubKeyName, ASN1_PRINTABLESTRING),
     ASN1_SIMPLE(PubKeyMAC, MACKey, ASN1_OCTET_STRING),
@@ -44,27 +63,78 @@ ASN1_SEQUENCE(PubKeyMAC) = {
 DECLARE_ASN1_FUNCTIONS(PubKeyMAC);
 IMPLEMENT_ASN1_FUNCTIONS(PubKeyMAC);
 
-void create_output_dirs() {
+ASN1_SEQUENCE(SymElements) = {
+    ASN1_SIMPLE(SymElements,SymElementsID,ASN1_INTEGER),
+    ASN1_SIMPLE(SymElements, SymKey,ASN1_OCTET_STRING),
+    ASN1_SIMPLE(SymElements, IV,ASN1_OCTET_STRING)
+}ASN1_SEQUENCE_END(SymElements);
+
+DECLARE_ASN1_FUNCTIONS(SymElements);
+IMPLEMENT_ASN1_FUNCTIONS(SymElements);
+
+ASN1_SEQUENCE(Transaction) = {
+    ASN1_SIMPLE(Transaction,TransactionID,ASN1_INTEGER),
+    ASN1_SIMPLE(Transaction,Subject,ASN1_PRINTABLESTRING),
+    ASN1_SIMPLE(Transaction,SenderID,ASN1_INTEGER),
+    ASN1_SIMPLE(Transaction,ReceiverID,ASN1_INTEGER),
+    ASN1_SIMPLE(Transaction,SymElementsID,ASN1_INTEGER),
+    ASN1_SIMPLE(Transaction,EncryptedData,ASN1_OCTET_STRING),
+    ASN1_SIMPLE(Transaction,TransactionSign, ASN1_OCTET_STRING)
+}ASN1_SEQUENCE_END(Transaction);
+
+DECLARE_ASN1_FUNCTIONS(Transaction);
+IMPLEMENT_ASN1_FUNCTIONS(Transaction);
+
+void create_output_dirs()
+{
     if (_mkdir("keys") == -1 && errno != EEXIST) {
         fprintf(stderr, "Eroare creare director keys: %s\n", strerror(errno));
     }
     if (_mkdir("macs") == -1 && errno != EEXIST) {
-        fprintf(stderr, "Eroare creare director keys: %s\n", strerror(errno));
+        fprintf(stderr, "Eroare creare director macs: %s\n", strerror(errno));
+    }
+    if (_mkdir("sym") == -1 && errno != EEXIST) {
+        fprintf(stderr, "Eroare creare director sym: %s\n", strerror(errno));
+    }
+    if (_mkdir("transactions") == -1 && errno != EEXIST) {
+        fprintf(stderr, "Eroare creare director transactions: %s\n", strerror(errno));
     }
     printf("Directoarele au fost create in keys\n");
 }
 
-SecureProfile* create_SecureProfile(const char* id) {
+SecureProfile* create_SecureProfile(const char* name, int id) {
     SecureProfile* entity = (SecureProfile*)malloc(sizeof(SecureProfile));
     if (!entity) return NULL;
 
-    entity->entity_id = strdup(id);
+    entity->entity_name = strdup(name);
+    entity->entity_id = id;
     entity->private_key = NULL;
     entity->public_key = NULL;
+    entity->rsa_key = NULL;
     entity->gmac = NULL;    
-    entity->gmac_len = 0;       
-    entity->generation_timestamp = time(NULL);
+    entity->gmac_len = 0;
+
+    time_t base_time = 1115240705;
+    entity->generation_timestamp = base_time + 1000;
+
     return entity;
+}
+
+int generate_rsa_keys(SecureProfile* entity)
+{
+    EVP_PKEY_CTX* ctx = NULL;
+
+    ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
+
+    EVP_PKEY_keygen_init(ctx);
+
+    EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 3072);
+
+    EVP_PKEY_keygen(ctx, &entity->rsa_key);
+
+    EVP_PKEY_CTX_free(ctx);
+    
+    return 1;
 }
 
 int generate_entity_keys(SecureProfile* entity) {
@@ -109,8 +179,8 @@ int save_entity_keys(SecureProfile* entity) {
 
     create_output_dirs();
 
-    snprintf(private_path, sizeof(private_path), "keys/private_%s.pem", entity->entity_id);
-    snprintf(public_path, sizeof(public_path), "keys/public_%s.pem", entity->entity_id);
+    snprintf(private_path, sizeof(private_path), "keys/private_%s.pem", entity->entity_name);
+    snprintf(public_path, sizeof(public_path), "keys/public_%s.pem", entity->entity_name);
 
     private_bio = BIO_new_file(private_path, "w");
     public_bio = BIO_new_file(public_path, "w");
@@ -138,7 +208,30 @@ cleanup:
     return ret;
 }
 
-int compute_gmac(SecureProfile* entity) {
+int save_rsa_keys(SecureProfile* entity)
+{
+    BIO* private_bio = NULL;
+    BIO* public_bio = NULL;
+    char private_path[256], public_path[256];
+
+    snprintf(private_path, sizeof(private_path), "keys/rsa_private_%s.pem", entity->entity_name);
+    snprintf(public_path, sizeof(public_path), "keys/rsa_public_%s.pem", entity->entity_name);
+
+    private_bio = BIO_new_file(private_path, "w");
+    public_bio = BIO_new_file(public_path, "w");
+
+    PEM_write_bio_PrivateKey(private_bio, entity->rsa_key, EVP_aes_256_cbc(), (unsigned char*)"password", strlen("password"), NULL, NULL);
+
+    PEM_write_bio_PUBKEY(public_bio, entity->rsa_key);
+
+    BIO_free(private_bio);
+    BIO_free(public_bio);
+
+    return 1;
+}
+
+int compute_gmac(SecureProfile* entity) 
+{
     int ret = 0;
     unsigned char* pub_key_data = NULL;
     size_t pub_key_len = 0;
@@ -270,7 +363,7 @@ int compute_gmac(SecureProfile* entity) {
         return 0;
     }
 
-    if (!ASN1_STRING_set(pub_key_mac->PubKeyName, entity->entity_id, strlen(entity->entity_id))) {
+    if (!ASN1_STRING_set(pub_key_mac->PubKeyName, entity->entity_name, strlen(entity->entity_name))) {
         fprintf(stderr, "Failed to set PubKeyName\n");
         ASN1_OCTET_STRING_free(pub_key_mac->MACValue);
         ASN1_OCTET_STRING_free(pub_key_mac->MACKey);
@@ -346,7 +439,7 @@ int compute_gmac(SecureProfile* entity) {
     PubKeyMAC_free(pub_key_mac);
 
     // Salvează în fișier raw
-    snprintf(mac_path, sizeof(mac_path), "macs/public_%s.gmac", entity->entity_id);
+    snprintf(mac_path, sizeof(mac_path), "macs/public_%s.gmac", entity->entity_name);
     BIO* mac_bio = BIO_new_file(mac_path, "wb");
     if (!mac_bio) {
         fprintf(stderr, "Failed to open mac file\n");
@@ -372,6 +465,8 @@ int compute_gmac(SecureProfile* entity) {
 
 int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, EVP_PKEY** pkey, EVP_PKEY** peerkey)
 {
+    const char* password = "password";  // Aceeași parolă folosită la salvare
+
     *pkey = EVP_PKEY_new();
     *peerkey = EVP_PKEY_new();
 
@@ -384,7 +479,9 @@ int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, EVP_PK
         *peerkey = NULL;
         return 0;
     }
-    if (!PEM_read_PrivateKey(fp, pkey, NULL, NULL)) {
+
+    // Adaugă parola la citirea cheii private
+    if (!PEM_read_PrivateKey(fp, pkey, NULL, (void*)password)) {
         fprintf(stderr, "Failed to read private key from %s\n", privateKeyFilename);
         fclose(fp);
         EVP_PKEY_free(*pkey);
@@ -395,6 +492,7 @@ int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, EVP_PK
     }
     fclose(fp);
 
+    // Restul codului rămâne la fel
     FILE* fpp = fopen(pubKeyFilename, "r");
     if (fpp == NULL) {
         fprintf(stderr, "Null Pointer for %s file\n", pubKeyFilename);
@@ -612,7 +710,7 @@ int derive_symmetric_key(unsigned char* x_bytes, size_t x_len, unsigned char* y_
     return 1;
 }
 
-unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilename, unsigned char** symRightUnused, size_t* symRightUnusedLen) {
+unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilename, unsigned char** symRightUnused, size_t* symRightUnusedLen, unsigned char** iv) {
     EVP_PKEY* pkey = NULL;
     EVP_PKEY* peerkey = NULL;
     unsigned char* x_bytes = NULL;
@@ -648,8 +746,12 @@ unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilena
     EVP_PKEY_free(pkey);
     EVP_PKEY_free(peerkey);
 
+    *iv = (unsigned char*)malloc(16);
+    memcpy(*iv, *symRightUnused, 16);
+
     return symKey;
 }
+
 int validate_autenticity(SecureProfile* entity) 
 {
     int ret = 0;
@@ -669,13 +771,13 @@ int validate_autenticity(SecureProfile* entity)
         fprintf(stderr, "Entity is NULL\n");
         return 0;
     }
-    if (!entity->entity_id) {
+    if (!entity->entity_name) {
         fprintf(stderr, "Entity ID is NULL\n");
         return 0;
     }
 
     // Construiește calea către fișierul cheii publice
-    snprintf(pub_key_path, sizeof(pub_key_path), "keys/public_%s.pem", entity->entity_id);
+    snprintf(pub_key_path, sizeof(pub_key_path), "keys/public_%s.pem", entity->entity_name);
 
     // Citește cheia publică din fișier
     BIO* pub_bio = BIO_new_file(pub_key_path, "r");
@@ -693,7 +795,7 @@ int validate_autenticity(SecureProfile* entity)
     BIO_free(pub_bio);
 
     // Construiește calea către fișierul GMAC
-    snprintf(gmac_path, sizeof(gmac_path), "macs/public_%s.gmac", entity->entity_id);
+    snprintf(gmac_path, sizeof(gmac_path), "macs/public_%s.gmac", entity->entity_name);
 
     // Citește fișierul GMAC și decodează structura PubKeyMAC
     BIO* mac_bio = BIO_new_file(gmac_path, "rb");
@@ -888,101 +990,724 @@ int validate_autenticity(SecureProfile* entity)
     return 1;
 }
 
+int save_sym_elements(unsigned char* symKey, unsigned char* iv, int elementID)
+{
+    SymElements* sym_elem = SymElements_new();
+    BIO* bio = NULL;
+    char filename[256];
+    int der_len;
+    unsigned char* der_buf = NULL;
+    int ret = 0;
+
+    ASN1_INTEGER_set(sym_elem->SymElementsID, elementID);
+    ASN1_STRING_set(sym_elem->SymKey, symKey, 16);
+    ASN1_STRING_set(sym_elem->IV, iv, 16);
+
+    der_len = i2d_SymElements(sym_elem, NULL);
+    der_buf = (unsigned char*)malloc(der_len);
+    unsigned char* der_ptr = der_buf;
+    i2d_SymElements(sym_elem, &der_ptr);
+
+    bio = BIO_new(BIO_s_mem());
+    BIO* b64 = BIO_new(BIO_f_base64());
+    BIO_push(b64, bio);
+    BIO_write(b64, der_buf, der_len);
+    BIO_flush(b64);
+
+    snprintf(filename, sizeof(filename), "sym/sym_elements_%d.der", elementID);
+    printf("Saving SymElements to: %s\n", filename);
+    BIO* file_bio = BIO_new_file(filename, "w");
+
+    char* base64_data;
+    long base64_len = BIO_get_mem_data(bio, &base64_data);
+    BIO_write(file_bio, base64_data, base64_len);
+
+    ret = 1;
+
+    BIO_free_all(b64);
+    BIO_free(file_bio);
+    SymElements_free(sym_elem);
+    free(der_buf);
+
+    return ret;
+}
+
 int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
 {
     char private_path_1[256], public_path_1[256];
     char private_path_2[256], public_path_2[256];
     unsigned char* symRightUnused1 = NULL;
-    size_t symRightUnusedLentgh1 = 0;
+    size_t symRightUnusedLength1 = 0;
     unsigned char* symRightUnused2 = NULL;
-    size_t symRightUnusedLentgh2 = 0;
+    size_t symRightUnusedLength2 = 0;
     unsigned char* symKey1 = NULL;
     unsigned char* symKey2 = NULL;
+    unsigned char* iv1 = NULL;
+    unsigned char* iv2 = NULL;
 
-    snprintf(private_path_1, sizeof(private_path_1), "keys/private_%s.pem", entity1->entity_id);
-    snprintf(public_path_1, sizeof(public_path_1), "keys/public_%s.pem", entity1->entity_id);
-    
-    snprintf(private_path_2, sizeof(private_path_2), "keys/private_%s.pem", entity2->entity_id);
-    snprintf(public_path_2, sizeof(public_path_2), "keys/public_%s.pem", entity2->entity_id);
+    // Construiește căile fișierelor
+    snprintf(private_path_1, sizeof(private_path_1), "keys/private_%s.pem", entity1->entity_name);
+    snprintf(public_path_1, sizeof(public_path_1), "keys/public_%s.pem", entity1->entity_name);
+    snprintf(private_path_2, sizeof(private_path_2), "keys/private_%s.pem", entity2->entity_name);
+    snprintf(public_path_2, sizeof(public_path_2), "keys/public_%s.pem", entity2->entity_name);
 
-    printf("Verifying authenticity of %s's public key...\n", entity2->entity_id);
+    // Validează autenticitatea cheilor publice
+    printf("Verifying authenticity of %s's public key...\n", entity2->entity_name);
     if (!validate_autenticity(entity2))
     {
-        fprintf(stderr, "Failed to validate authenticity of %s's public key\n", entity2->entity_id);
+        fprintf(stderr, "Failed to validate authenticity of %s's public key\n", entity2->entity_name);
         return 0;
     }
 
-    printf("Verifying authenticity of %s's public key...\n", entity1->entity_id);
-    if (!validate_autenticity(entity1)) 
+    printf("Verifying authenticity of %s's public key...\n", entity1->entity_name);
+    if (!validate_autenticity(entity1))
     {
-        fprintf(stderr, "Failed to validate authenticity of %s's public key\n", entity1->entity_id);
+        fprintf(stderr, "Failed to validate authenticity of %s's public key\n", entity1->entity_name);
         return 0;
     }
 
-    printf("%s switches keys with %s...\n", entity1->entity_id, entity2->entity_id);
-    unsigned char* skey1 = ecdh(private_path_1, public_path_2,&symRightUnused1,&symRightUnusedLentgh1);
-    if (!skey1)
+    // Schimb de chei ECDH - entity1
+    printf("%s switches keys with %s...\n", entity1->entity_name, entity2->entity_name);
+    symKey1 = ecdh(private_path_1, public_path_2, &symRightUnused1, &symRightUnusedLength1, &iv1);
+    if (!symKey1)
     {
-        fprintf(stderr, "ECDH failed for %s\n", entity1->entity_id);
+        fprintf(stderr, "ECDH failed for %s\n", entity1->entity_name);
         return 0;
     }
 
-    printf("%s switches keys with %s...\n", entity2->entity_id, entity1->entity_id);
-    unsigned char* skey2 = ecdh(private_path_2, public_path_1,&symRightUnused2,&symRightUnusedLentgh2);
-    if (!skey2) 
+    // Schimb de chei ECDH - entity2
+    printf("%s switches keys with %s...\n", entity2->entity_name, entity1->entity_name);
+    symKey2 = ecdh(private_path_2, public_path_1, &symRightUnused2, &symRightUnusedLength2, &iv2);
+    if (!symKey2)
     {
-        fprintf(stderr, "ECDH failed for %s\n", entity2->entity_id);
-        free(symRightUnused1);
-        OPENSSL_free(skey1);
+        fprintf(stderr, "ECDH failed for %s\n", entity2->entity_name);
+        // Cleanup după eșecul ECDH pentru entity2
+        if (iv1) free(iv1);
+        if (symRightUnused1) free(symRightUnused1);
+        if (symKey1) free(symKey1);
         return 0;
     }
 
-    if (symKey1 && symKey2 && memcmp(symKey1, symKey2, 16) == 0) {
-        printf("Handshake successful! SymKey generated:\n");
-        for (int i = 0; i < 16; i++) {
-            printf("%02x ", symKey1[i]);
-        }
-        printf("\nSymRight unused bytes for %s: %zu bytes\n", entity1->entity_id, symRightUnusedLentgh1);
-        for (size_t i = 0; i < symRightUnusedLentgh1; i++) {
-            printf("%02x ", symRightUnused1[i]);
-        }
-        printf("\nSymRight unused bytes for %s: %zu bytes\n", entity2->entity_id, symRightUnusedLentgh2);
-        for (size_t i = 0; i < symRightUnusedLentgh2; i++) {
-            printf("%02x ", symRightUnused2[i]);
-        }
-        printf("\n");
-    }
-    else {
+    // Verifică dacă cheile simetrice se potrivesc
+    if (!symKey1 || !symKey2 || memcmp(symKey1, symKey2, 16) != 0) {
         fprintf(stderr, "Handshake failed: symmetric keys do not match!\n");
-        free(symRightUnused1);
-        free(symRightUnused2);
-        OPENSSL_free(symKey1);
-        OPENSSL_free(symKey2);
+        // Cleanup complet după eșec
+        if (iv2) free(iv2);
+        if (symRightUnused2) free(symRightUnused2);
+        if (symKey2) free(symKey2);
+        if (iv1) free(iv1);
+        if (symRightUnused1) free(symRightUnused1);
+        if (symKey1) free(symKey1);
         return 0;
     }
 
- 
-    free(symRightUnused1);
-    free(symRightUnused2);
-    OPENSSL_free(symKey1);
-    OPENSSL_free(symKey2);
+    // Handshake reușit - salvează elementele simetrice
+    printf("Handshake successful! Saving symmetric elements...\n");
+
+    // Calculează ID-ul pentru SymElements (combinație unică)
+    int sym_elements_id = (entity1->entity_id * 100) + entity2->entity_id;
+
+    // Salvează elementele simetrice pentru comunicarea lor
+    if (!save_sym_elements(symKey1, iv1, sym_elements_id)) {
+        fprintf(stderr, "Failed to save SymElements\n");
+        // Cleanup complet după eșec salvare
+        if (iv2) free(iv2);
+        if (symRightUnused2) free(symRightUnused2);
+        if (symKey2) free(symKey2);
+        if (iv1) free(iv1);
+        if (symRightUnused1) free(symRightUnused1);
+        if (symKey1) free(symKey1);
+        return 0;
+    }
+    else
+    {
+        printf("SymElements saved successfully with ID: %d\n", sym_elements_id);
+    }
+
+    // Succes total
+    printf("Symmetric elements saved with ID: %d\n", sym_elements_id);
+    printf("Handshake completed successfully between %s (ID: %d) and %s (ID: %d)\n",
+        entity1->entity_name, entity1->entity_id,
+        entity2->entity_name, entity2->entity_id);
+
+    // Cleanup final - eliberează toate resursele
+    if (iv2) free(iv2);
+    if (symRightUnused2) free(symRightUnused2);
+    if (symKey2) free(symKey2);
+    if (iv1) free(iv1);
+    if (symRightUnused1) free(symRightUnused1);
+    if (symKey1) free(symKey1);
 
     return 1;
 }
 
+int aes_256_fancy_ofb_encrypt(unsigned char* plaintext, size_t plaintext_len, unsigned char* key, unsigned char* iv, unsigned char** ciphertext, size_t* ciphertext_len) {
+    AES_KEY aes_key;
+    unsigned char* output = NULL;
+
+    // Verifică lungimea cheii (trebuie 16 bytes pentru AES-256)
+    if (AES_set_encrypt_key(key, 16 * 8, &aes_key) != 0) {
+        fprintf(stderr, "Error setting AES key!\n");
+        return 0;
+    }
+
+    // Inversează IV-ul
+    unsigned char inv_iv[AES_BLOCK_SIZE];
+    for (int i = 0; i < AES_BLOCK_SIZE; i++) {
+        inv_iv[i] = iv[AES_BLOCK_SIZE - 1 - i];
+    }
+
+    // Aloca memorie pentru output
+    output = (unsigned char*)malloc(plaintext_len);
+    if (!output) {
+        fprintf(stderr, "Failed to allocate memory for ciphertext\n");
+        return 0;
+    }
+
+    unsigned char current_iv[AES_BLOCK_SIZE];
+    memcpy(current_iv, iv, AES_BLOCK_SIZE);
+
+    // Criptează pe blocuri
+    for (size_t i = 0; i < plaintext_len; i += AES_BLOCK_SIZE) {
+        unsigned char encrypted_block[AES_BLOCK_SIZE];
+        unsigned char modified_block[AES_BLOCK_SIZE];
+
+        // Criptează IV-ul curent
+        AES_encrypt(current_iv, encrypted_block, &aes_key);
+
+        // Actualizează IV-ul pentru următorul bloc
+        memcpy(current_iv, encrypted_block, AES_BLOCK_SIZE);
+
+        // MODIFICARE PRINCIPALĂ: XOR cu inv_IV în loc de +5
+        for (int j = 0; j < AES_BLOCK_SIZE; j++) {
+            modified_block[j] = encrypted_block[j] ^ inv_iv[j];
+        }
+
+        // XOR cu plaintext pentru a obține ciphertext
+        size_t block_len = (plaintext_len - i < AES_BLOCK_SIZE) ?
+            (plaintext_len - i) : AES_BLOCK_SIZE;
+
+        for (size_t j = 0; j < block_len; j++) {
+            output[i + j] = modified_block[j] ^ plaintext[i + j];
+        }
+    }
+
+    *ciphertext = output;
+    *ciphertext_len = plaintext_len;
+
+    return 1;
+}
+
+int aes_256_fancy_ofb_decrypt(unsigned char* ciphertext, size_t ciphertext_len, unsigned char* key, unsigned char* iv, unsigned char** plaintext, size_t* plaintext_len) 
+{
+    AES_KEY aes_key;
+    unsigned char* output = NULL;
+
+    // Verifică lungimea cheii
+    if (AES_set_encrypt_key(key, 16 * 8, &aes_key) != 0) {
+        fprintf(stderr, "Error setting AES key!\n");
+        return 0;
+    }
+
+    // Inversează IV-ul
+    unsigned char inv_iv[AES_BLOCK_SIZE];
+    for (int i = 0; i < AES_BLOCK_SIZE; i++) {
+        inv_iv[i] = iv[AES_BLOCK_SIZE - 1 - i];
+    }
+
+    // Aloca memorie pentru output
+    output = (unsigned char*)malloc(ciphertext_len);
+    if (!output) {
+        fprintf(stderr, "Failed to allocate memory for plaintext\n");
+        return 0;
+    }
+
+    unsigned char current_iv[AES_BLOCK_SIZE];
+    memcpy(current_iv, iv, AES_BLOCK_SIZE);
+
+    // Decriptează pe blocuri
+    for (size_t i = 0; i < ciphertext_len; i += AES_BLOCK_SIZE) {
+        unsigned char encrypted_block[AES_BLOCK_SIZE];
+        unsigned char modified_block[AES_BLOCK_SIZE];
+
+        // Criptează IV-ul curent
+        AES_encrypt(current_iv, encrypted_block, &aes_key);
+
+        // Actualizează IV-ul pentru următorul bloc
+        memcpy(current_iv, encrypted_block, AES_BLOCK_SIZE);
+
+        // MODIFICARE PRINCIPALĂ: XOR cu inv_IV în loc de +5
+        for (int j = 0; j < AES_BLOCK_SIZE; j++) {
+            modified_block[j] = encrypted_block[j] ^ inv_iv[j];
+        }
+
+        // XOR cu ciphertext pentru a obține plaintext
+        size_t block_len = (ciphertext_len - i < AES_BLOCK_SIZE) ?
+            (ciphertext_len - i) : AES_BLOCK_SIZE;
+
+        for (size_t j = 0; j < block_len; j++) {
+            output[i + j] = modified_block[j] ^ ciphertext[i + j];
+        }
+    }
+
+    *plaintext = output;
+    *plaintext_len = ciphertext_len;
+
+    return 1;
+}
+
+int generate_transaction_id(SecureProfile* sender, SecureProfile* receiver) {
+    time_t now = time(NULL);
+    struct tm* tm_info = localtime(&now);
+
+    // Formă mai simplă pentru a evita overflow-ul
+    int hour_min = tm_info->tm_hour * 60 + tm_info->tm_min;
+    int transaction_id = (hour_min * 1000) +
+        (sender->entity_id * 10) +
+        receiver->entity_id;
+
+    return transaction_id;
+}
+
+int load_sym_elements(int sym_elements_id, unsigned char** symKey, unsigned char** iv) {
+    char filename[256];
+    BIO* bio = NULL;
+    SymElements* sym_elem = NULL;
+    int ret = 0;
+
+    snprintf(filename, sizeof(filename), "sym/sym_elements_%d.der", sym_elements_id);
+
+    bio = BIO_new_file(filename, "r");
+    if (!bio) {
+        fprintf(stderr, "Failed to open SymElements file: %s\n", filename);
+        return 0;
+    }
+
+    BIO* b64 = BIO_new(BIO_f_base64());
+    BIO_push(b64, bio);
+
+    char buffer[4096];
+    int der_len = BIO_read(b64, buffer, sizeof(buffer));
+
+    if (der_len <= 0) {
+        fprintf(stderr, "Failed to read SymElements file\n");
+        BIO_free_all(b64);
+        return 0;
+    }
+
+    const unsigned char* der_ptr = (const unsigned char*)buffer;
+    sym_elem = d2i_SymElements(NULL, &der_ptr, der_len);
+    if (!sym_elem) {
+        fprintf(stderr, "Failed to decode SymElements DER\n");
+        BIO_free_all(b64);
+        return 0;
+    }
+
+    *symKey = (unsigned char*)malloc(sym_elem->SymKey->length);
+    *iv = (unsigned char*)malloc(sym_elem->IV->length);
+
+    if (*symKey && *iv) {
+        memcpy(*symKey, sym_elem->SymKey->data, sym_elem->SymKey->length);
+        memcpy(*iv, sym_elem->IV->data, sym_elem->IV->length);
+        ret = 1;
+    }
+
+    SymElements_free(sym_elem);
+    BIO_free_all(b64);
+
+    return ret;
+}
+
+int sign_transaction_data(unsigned char* data, size_t data_len,
+    const char* rsa_private_key_file,
+    unsigned char** signature, size_t* signature_len) {
+    BIO* bio = NULL;
+    EVP_PKEY* rsa_key = NULL;
+    EVP_MD_CTX* mdctx = NULL;
+    int ret = 0;
+
+    bio = BIO_new_file(rsa_private_key_file, "r");
+    if (!bio) {
+        fprintf(stderr, "Failed to open RSA private key file\n");
+        return 0;
+    }
+
+    rsa_key = PEM_read_bio_PrivateKey(bio, NULL, NULL, (void*)"password");
+    BIO_free(bio);
+
+    if (!rsa_key) {
+        fprintf(stderr, "Failed to load RSA private key\n");
+        return 0;
+    }
+
+    mdctx = EVP_MD_CTX_new();
+    if (!mdctx) {
+        fprintf(stderr, "Failed to create signing context\n");
+        EVP_PKEY_free(rsa_key);
+        return 0;
+    }
+
+    if (EVP_DigestSignInit(mdctx, NULL, EVP_sha256(), NULL, rsa_key) <= 0) {
+        fprintf(stderr, "Failed to initialize signing\n");
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(rsa_key);
+        return 0;
+    }
+
+    if (EVP_DigestSignUpdate(mdctx, data, data_len) <= 0) {
+        fprintf(stderr, "Failed to update signing\n");
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(rsa_key);
+        return 0;
+    }
+
+    if (EVP_DigestSignFinal(mdctx, NULL, signature_len) <= 0) {
+        fprintf(stderr, "Failed to get signature length\n");
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(rsa_key);
+        return 0;
+    }
+
+    *signature = (unsigned char*)malloc(*signature_len);
+    if (!*signature) {
+        fprintf(stderr, "Failed to allocate memory for signature\n");
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(rsa_key);
+        return 0;
+    }
+
+    if (EVP_DigestSignFinal(mdctx, *signature, signature_len) <= 0) {
+        fprintf(stderr, "Failed to generate signature\n");
+        free(*signature);
+        *signature = NULL;
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(rsa_key);
+        return 0;
+    }
+
+    ret = 1;
+
+    EVP_MD_CTX_free(mdctx);
+    EVP_PKEY_free(rsa_key);
+
+    return ret;
+}
+
+int create_transaction(SecureProfile* sender, SecureProfile* receiver,
+    const char* subject, const char* message,
+    const char* transaction_name) {
+    Transaction* transaction = NULL;
+    unsigned char* symKey = NULL;
+    unsigned char* iv = NULL;
+    unsigned char* encrypted_data = NULL;
+    size_t encrypted_len = 0;
+    unsigned char* signature = NULL;
+    size_t signature_len = 0;
+    unsigned char* der_buf = NULL;
+    int der_len = 0;
+    BIO* file_bio = NULL;
+    int ret = 0;
+
+    int sym_elements_id = (sender->entity_id * 100) + receiver->entity_id;
+
+    printf("Looking for SymElements ID: %d\n", sym_elements_id);
+
+    if (!load_sym_elements(sym_elements_id, &symKey, &iv)) {
+        fprintf(stderr, "Failed to load SymElements for communication\n");
+        return 0;
+    }
+
+    if (!aes_256_fancy_ofb_encrypt((unsigned char*)message, strlen(message),
+        symKey, iv, &encrypted_data, &encrypted_len)) {
+        fprintf(stderr, "Failed to encrypt message\n");
+        free(symKey);
+        free(iv);
+        return 0;
+    }
+
+    transaction = Transaction_new();
+    if (!transaction) {
+        fprintf(stderr, "Failed to create Transaction structure\n");
+        free(symKey);
+        free(iv);
+        free(encrypted_data);
+        return 0;
+    }
+
+    int transaction_id = generate_transaction_id(sender, receiver);
+
+    ASN1_INTEGER_set(transaction->TransactionID, transaction_id);
+    ASN1_STRING_set(transaction->Subject, subject, strlen(subject));
+    ASN1_INTEGER_set(transaction->SenderID, sender->entity_id);
+    ASN1_INTEGER_set(transaction->ReceiverID, receiver->entity_id);
+    ASN1_INTEGER_set(transaction->SymElementsID, sym_elements_id);
+    ASN1_STRING_set(transaction->EncryptedData, encrypted_data, encrypted_len);
+
+    transaction->TransactionSign = ASN1_OCTET_STRING_new();
+    ASN1_STRING_set(transaction->TransactionSign, "", 0);
+
+    int data_to_sign_len = i2d_Transaction(transaction, NULL);
+    unsigned char* data_to_sign = (unsigned char*)malloc(data_to_sign_len);
+    unsigned char* data_ptr = data_to_sign;
+    i2d_Transaction(transaction, &data_ptr);
+
+    char rsa_private_key_path[256];
+    snprintf(rsa_private_key_path, sizeof(rsa_private_key_path),
+        "keys/rsa_private_%s.pem", sender->entity_name);
+
+    if (!sign_transaction_data(data_to_sign, data_to_sign_len,
+        rsa_private_key_path, &signature, &signature_len)) {
+        fprintf(stderr, "Failed to sign transaction\n");
+        Transaction_free(transaction);
+        free(symKey);
+        free(iv);
+        free(encrypted_data);
+        free(data_to_sign);
+        return 0;
+    }
+
+    ASN1_STRING_set(transaction->TransactionSign, signature, signature_len);
+
+    der_len = i2d_Transaction(transaction, NULL);
+    der_buf = (unsigned char*)malloc(der_len);
+    unsigned char* der_ptr = der_buf;
+    i2d_Transaction(transaction, &der_ptr);
+
+    char output_filename[512];
+    snprintf(output_filename, sizeof(output_filename), "transactions/%s", transaction_name);
+
+    file_bio = BIO_new_file(output_filename, "wb");
+    if (!file_bio) {
+        fprintf(stderr, "Failed to open output file: %s\n", output_filename);
+        Transaction_free(transaction);
+        free(symKey);
+        free(iv);
+        free(encrypted_data);
+        free(data_to_sign);
+        free(signature);
+        free(der_buf);
+        return 0;
+    }
+
+    if (BIO_write(file_bio, der_buf, der_len) != der_len) {
+        fprintf(stderr, "Failed to write transaction to file\n");
+        BIO_free(file_bio);
+        Transaction_free(transaction);
+        free(symKey);
+        free(iv);
+        free(encrypted_data);
+        free(data_to_sign);
+        free(signature);
+        free(der_buf);
+        return 0;
+    }
+
+    printf("Transaction created successfully!\n");
+    printf("Transaction ID: %d\n", transaction_id);
+    printf("From: %s (ID: %d)\n", sender->entity_name, sender->entity_id);
+    printf("To: %s (ID: %d)\n", receiver->entity_name, receiver->entity_id);
+    printf("Subject: %s\n", subject);
+    printf("Saved to: %s\n", output_filename);
+
+    ret = 1;
+
+    BIO_free(file_bio);
+    Transaction_free(transaction);
+    free(symKey);
+    free(iv);
+    free(encrypted_data);
+    free(data_to_sign);
+    free(signature);
+    free(der_buf);
+
+    return ret;
+}
+
+int verify_and_read_transaction(const char* transaction_name, const char* rsa_public_key_file) {
+    BIO* bio = NULL;
+    Transaction* transaction = NULL;
+    unsigned char* file_data = NULL;
+    int file_size = 0;
+    EVP_PKEY* rsa_key = NULL;
+    EVP_MD_CTX* mdctx = NULL;
+    unsigned char* decrypted_message = NULL;
+    size_t decrypted_len = 0;
+    unsigned char* symKey = NULL;
+    unsigned char* iv = NULL;
+    int ret = 0;
+
+    char transaction_file[512];
+    snprintf(transaction_file, sizeof(transaction_file), "transactions/%s", transaction_name);
+
+    bio = BIO_new_file(transaction_file, "rb");
+    if (!bio) {
+        fprintf(stderr, "Failed to open transaction file: %s\n", transaction_file);
+        return 0;
+    }
+
+    BIO_seek(bio, 0);
+    file_size = BIO_pending(bio);
+    file_data = (unsigned char*)malloc(file_size);
+    BIO_read(bio, file_data, file_size);
+    BIO_free(bio);
+
+    const unsigned char* file_ptr = file_data;
+    transaction = d2i_Transaction(NULL, &file_ptr, file_size);
+    if (!transaction) {
+        fprintf(stderr, "Failed to decode transaction\n");
+        free(file_data);
+        return 0;
+    }
+
+    bio = BIO_new_file(rsa_public_key_file, "r");
+    if (!bio) {
+        fprintf(stderr, "Failed to open RSA public key file\n");
+        Transaction_free(transaction);
+        free(file_data);
+        return 0;
+    }
+
+    rsa_key = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
+    BIO_free(bio);
+
+    if (!rsa_key) {
+        fprintf(stderr, "Failed to load RSA public key\n");
+        Transaction_free(transaction);
+        free(file_data);
+        return 0;
+    }
+
+    mdctx = EVP_MD_CTX_new();
+    if (!mdctx) {
+        fprintf(stderr, "Failed to create verification context\n");
+        EVP_PKEY_free(rsa_key);
+        Transaction_free(transaction);
+        free(file_data);
+        return 0;
+    }
+
+    if (EVP_DigestVerifyInit(mdctx, NULL, EVP_sha256(), NULL, rsa_key) <= 0) {
+        fprintf(stderr, "Failed to initialize verification\n");
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(rsa_key);
+        Transaction_free(transaction);
+        free(file_data);
+        return 0;
+    }
+
+    ASN1_OCTET_STRING* original_sign = transaction->TransactionSign;
+    transaction->TransactionSign = ASN1_OCTET_STRING_new();
+
+    int data_len = i2d_Transaction(transaction, NULL);
+    unsigned char* data = (unsigned char*)malloc(data_len);
+    unsigned char* data_ptr = data;
+    i2d_Transaction(transaction, &data_ptr);
+
+    ASN1_OCTET_STRING_free(transaction->TransactionSign);
+    transaction->TransactionSign = original_sign;
+
+    if (EVP_DigestVerifyUpdate(mdctx, data, data_len) <= 0) {
+        fprintf(stderr, "Failed to update verification\n");
+        free(data);
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(rsa_key);
+        Transaction_free(transaction);
+        free(file_data);
+        return 0;
+    }
+
+    int verify_result = EVP_DigestVerifyFinal(mdctx,
+        transaction->TransactionSign->data,
+        transaction->TransactionSign->length);
+
+    if (verify_result != 1) {
+        fprintf(stderr, "Transaction signature verification failed!\n");
+        free(data);
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(rsa_key);
+        Transaction_free(transaction);
+        free(file_data);
+        return 0;
+    }
+
+    printf("Transaction signature verified successfully!\n");
+
+    int sym_elements_id = ASN1_INTEGER_get(transaction->SymElementsID);
+    if (!load_sym_elements(sym_elements_id, &symKey, &iv)) {
+        fprintf(stderr, "Failed to load SymElements for decryption\n");
+        free(data);
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(rsa_key);
+        Transaction_free(transaction);
+        free(file_data);
+        return 0;
+    }
+
+    if (!aes_256_fancy_ofb_decrypt(transaction->EncryptedData->data,
+        transaction->EncryptedData->length,
+        symKey, iv, &decrypted_message, &decrypted_len)) {
+        fprintf(stderr, "Failed to decrypt message\n");
+        free(symKey);
+        free(iv);
+        free(data);
+        EVP_MD_CTX_free(mdctx);
+        EVP_PKEY_free(rsa_key);
+        Transaction_free(transaction);
+        free(file_data);
+        return 0;
+    }
+
+    printf("\n=== Transaction Details ===\n");
+    printf("Transaction ID: %d\n", ASN1_INTEGER_get(transaction->TransactionID));
+    printf("Subject: %.*s\n", transaction->Subject->length, transaction->Subject->data);
+    printf("Sender ID: %d\n", ASN1_INTEGER_get(transaction->SenderID));
+    printf("Receiver ID: %d\n", ASN1_INTEGER_get(transaction->ReceiverID));
+    printf("SymElements ID: %d\n", sym_elements_id);
+    printf("Decrypted Message: %.*s\n", (int)decrypted_len, decrypted_message);
+
+    ret = 1;
+
+    free(decrypted_message);
+    free(symKey);
+    free(iv);
+    free(data);
+    EVP_MD_CTX_free(mdctx);
+    EVP_PKEY_free(rsa_key);
+    Transaction_free(transaction);
+    free(file_data);
+
+    return ret;
+}
+
 int main()
 {
-    SecureProfile* entity1 = create_SecureProfile("entity1");
-    SecureProfile* entity2 = create_SecureProfile("entity2");
+    create_output_dirs();
+
+    SecureProfile* entity1 = create_SecureProfile("entity1", 1);
+    SecureProfile* entity2 = create_SecureProfile("entity2", 2);
     if (!entity1 || !entity2) {
         fprintf(stderr, "Failed to create entity\n");
+        if (entity1) {
+            if (entity1->entity_name) free(entity1->entity_name);
+            free(entity1);
+        }
+        if (entity2) {
+            if (entity2->entity_name) free(entity2->entity_name);
+            free(entity2);
+        }
         return 1;
     }
 
     printf("Generating EC key...\n");
     if (!generate_entity_keys(entity1) || !generate_entity_keys(entity2)) {
         fprintf(stderr, "Key generation failed!\n");
-        goto cleanup;
+        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
+        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
+        if (entity1->entity_name) free(entity1->entity_name);
+        if (entity2->entity_name) free(entity2->entity_name);
+        free(entity1);
+        free(entity2);
+        return 1;
     }
 
     entity1->public_key = entity1->private_key;
@@ -991,39 +1716,123 @@ int main()
     printf("Saving keys to pem directory...\n");
     if (!save_entity_keys(entity1) || !save_entity_keys(entity2)) {
         fprintf(stderr, "Saving keys failed!\n");
-        goto cleanup;
+        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
+        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
+        if (entity1->entity_name) free(entity1->entity_name);
+        if (entity2->entity_name) free(entity2->entity_name);
+        free(entity1);
+        free(entity2);
+        return 1;
+    }
+
+    printf("Generating RSA keys...\n");
+    if (!generate_rsa_keys(entity1) || !generate_rsa_keys(entity2)) {
+        fprintf(stderr, "RSA key generation failed!\n");
+        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
+        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
+        if (entity1->rsa_key) EVP_PKEY_free(entity1->rsa_key);
+        if (entity2->rsa_key) EVP_PKEY_free(entity2->rsa_key);
+        if (entity1->entity_name) free(entity1->entity_name);
+        if (entity2->entity_name) free(entity2->entity_name);
+        free(entity1);
+        free(entity2);
+        return 1;
+    }
+
+    printf("Saving RSA keys...\n");
+    if (!save_rsa_keys(entity1) || !save_rsa_keys(entity2)) {
+        fprintf(stderr, "Saving RSA keys failed!\n");
+        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
+        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
+        if (entity1->rsa_key) EVP_PKEY_free(entity1->rsa_key);
+        if (entity2->rsa_key) EVP_PKEY_free(entity2->rsa_key);
+        if (entity1->entity_name) free(entity1->entity_name);
+        if (entity2->entity_name) free(entity2->entity_name);
+        free(entity1);
+        free(entity2);
+        return 1;
     }
 
     printf("Computing and saving GMAC...\n");
     if (!compute_gmac(entity1) || !compute_gmac(entity2)) {
         fprintf(stderr, "GMAC computation failed!\n");
-        goto cleanup;
+        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
+        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
+        if (entity1->rsa_key) EVP_PKEY_free(entity1->rsa_key);
+        if (entity2->rsa_key) EVP_PKEY_free(entity2->rsa_key);
+        if (entity1->gmac) free(entity1->gmac);
+        if (entity2->gmac) free(entity2->gmac);
+        if (entity1->entity_name) free(entity1->entity_name);
+        if (entity2->entity_name) free(entity2->entity_name);
+        free(entity1);
+        free(entity2);
+        return 1;
     }
 
     printf("Success to generate and save keys!\n");
 
     printf("Handshake initialize...\n");
-    if (!generate_handshake(entity1, entity2))
-    {
-        goto cleanup;
+    if (!generate_handshake(entity1, entity2)) {
+        fprintf(stderr, "Handshake failed!\n");
+        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
+        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
+        if (entity1->rsa_key) EVP_PKEY_free(entity1->rsa_key);
+        if (entity2->rsa_key) EVP_PKEY_free(entity2->rsa_key);
+        if (entity1->gmac) free(entity1->gmac);
+        if (entity2->gmac) free(entity2->gmac);
+        if (entity1->entity_name) free(entity1->entity_name);
+        if (entity2->entity_name) free(entity2->entity_name);
+        free(entity1);
+        free(entity2);
+        return 1;
     }
+
+    printf("\n=== Transaction System Test ===\n");
+
+    const char* message1 = "Transfer 100 RON pentru servicii consultanta";
+    const char* subject1 = "Plata servicii";
+
+    if (create_transaction(entity1, entity2, subject1, message1, "transaction_1_to_2.der")) {
+        printf("\nTransaction created successfully!\n");
+
+        char rsa_public_key_path[512];
+        snprintf(rsa_public_key_path, sizeof(rsa_public_key_path),
+            "keys/rsa_public_%s.pem", entity1->entity_name);
+
+        printf("\n=== Verifying Transaction ===\n");
+        if (verify_and_read_transaction("transaction_1_to_2.der", rsa_public_key_path)) {
+            printf("Transaction verified successfully!\n");
+        }
+    }
+
+    const char* message2 = "Confirmare plata primita. Multumesc!";
+    const char* subject2 = "Confirmare plata";
+
+    if (create_transaction(entity2, entity1, subject2, message2, "transaction_2_to_1.der")) {
+        printf("\nSecond transaction created successfully!\n");
+
+        char rsa_public_key_path2[512];
+        snprintf(rsa_public_key_path2, sizeof(rsa_public_key_path2),
+            "keys/rsa_public_%s.pem", entity2->entity_name);
+
+        printf("\n=== Verifying Second Transaction ===\n");
+        if (verify_and_read_transaction("transaction_2_to_1.der", rsa_public_key_path2)) {
+            printf("Second transaction verified successfully!\n");
+        }
+    }
+
+    printf("\n=== All operations completed! ===\n");
+
+    if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
+    if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
+    if (entity1->rsa_key) EVP_PKEY_free(entity1->rsa_key);
+    if (entity2->rsa_key) EVP_PKEY_free(entity2->rsa_key);
+    if (entity1->gmac) free(entity1->gmac);
+    if (entity2->gmac) free(entity2->gmac);
+    if (entity1->entity_name) free(entity1->entity_name);
+    if (entity2->entity_name) free(entity2->entity_name);
+    free(entity1);
+    free(entity2);
 
     return 0;
-
-cleanup:
-    if (entity1){
-        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
-        if (entity1->public_key && entity1->public_key != entity1->private_key) EVP_PKEY_free(entity1->public_key);
-        if (entity1->gmac) free(entity1->gmac);
-        if (entity1->entity_id) free(entity1->entity_id);
-        free(entity1);
-    }
-    if (entity2) {
-        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
-        if (entity2->public_key && entity2->public_key != entity2->private_key) EVP_PKEY_free(entity2->public_key);
-        if (entity2->gmac) free(entity2->gmac);
-        if (entity2->entity_id) free(entity2->entity_id);
-        free(entity2);
-    }
-    return 1;
 }
