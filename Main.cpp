@@ -13,6 +13,8 @@
 #include "crypto_operations.h"
 #include "transaction.h"
 
+
+
 // Funcție ajutătoare pentru a găsi o entitate după ID
 SecureProfile* find_entity_by_id(SecureProfile** entities, int num_entities, const char* id) {
     for (int i = 0; i < num_entities; i++) {
@@ -122,24 +124,6 @@ int main(int argc, char* argv[]) {
 
     printf("\n=== All entities created and keys generated ===\n");
 
-    // Realizează handshake între toate perechile unice de entități
-    printf("\n=== Performing handshakes ===\n");
-    for (int i = 0; i < input_data->num_entities; i++) {
-        for (int j = i + 1; j < input_data->num_entities; j++) {
-            printf("\nHandshake between %s and %s...\n",
-                entities[i]->entity_name, entities[j]->entity_name);
-
-            if (!generate_handshake(entities[i], entities[j])) {
-                fprintf(stderr, "Handshake failed between %s and %s!\n",
-                    entities[i]->entity_name, entities[j]->entity_name);
-                // Continuăm cu alte handshake-uri
-                char log_msg[256];
-                snprintf(log_msg, sizeof(log_msg),
-                    "Handshake failed with %s", entities[j]->entity_name);
-                log_action(entities[i]->entity_name, log_msg);
-            }
-        }
-    }
 
     // Procesează tranzacțiile din input
     printf("\n=== Processing transactions ===\n");
@@ -158,16 +142,36 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        printf("\nCreating transaction %s from %s to %s...\n",
+        printf("\nProcessing transaction %s from %s to %s...\n",
             tr->transaction_id, sender->entity_name, receiver->entity_name);
+
+        // AICI FACEM HANDSHAKE-UL DOAR DACĂ NU EXISTĂ DEJA
+        // Verifică dacă există deja un SymElements pentru această pereche
+        int sym_id = get_sym_elements_id_for_transaction(sender->entity_id, receiver->entity_id);
+
+        if (sym_id == -1) {
+            // Nu există handshake anterior, trebuie să facem unul nou
+            printf("No handshake found between %s and %s, performing handshake...\n",
+                sender->entity_name, receiver->entity_name);
+
+            if (!generate_handshake(sender, receiver)) {
+                fprintf(stderr, "Handshake failed between %s and %s!\n",
+                    sender->entity_name, receiver->entity_name);
+                continue;
+            }
+
+            printf("Handshake completed successfully!\n");
+        }
+        else {
+            printf("Using existing handshake (SymElements ID: %d)\n", sym_id);
+        }
 
         // Creează numele fișierului pentru tranzacție
         char transaction_filename[256];
         snprintf(transaction_filename, sizeof(transaction_filename),
-            "%d_%d_%d.trx", sender->entity_id, receiver->entity_id,
-            tr->transaction_id);
+            "%d_%d_%d.trx", sender->entity_id, receiver->entity_id, atoi(tr->transaction_id));
 
-        // Creează tranzacția folosind subiectul din input
+        // Creează tranzacția
         if (create_transaction(sender, receiver, tr->subject,
             tr->message, tr->transaction_id, transaction_filename)) {
             printf("Transaction %s created successfully!\n", tr->transaction_id);

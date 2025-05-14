@@ -22,6 +22,7 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2);
 int aes_128_fancy_ofb_encrypt(unsigned char* plaintext, size_t plaintext_len, unsigned char* key, unsigned char* iv, unsigned char** ciphertext, size_t* ciphertext_len);
 int aes_128_fancy_ofb_decrypt(unsigned char* ciphertext, size_t ciphertext_len, unsigned char* key, unsigned char* iv, unsigned char** plaintext, size_t* plaintext_len);
 int get_sym_elements_id_for_transaction(int entity1_id, int entity2_id);
+int create_new_sym_elements(int entity1_id, int entity2_id);
 
 
 int get_sym_elements_id_for_transaction(int entity1_id, int entity2_id) {
@@ -35,12 +36,23 @@ int get_sym_elements_id_for_transaction(int entity1_id, int entity2_id) {
         return global_sym_counter;
     }
     else {
-        // Dacă nu, creăm unul nou
-        global_sym_counter++;
-        last_entity1 = id1;
-        last_entity2 = id2;
-        return global_sym_counter;
+        // Dacă nu, returnăm -1 pentru a indica că nu există handshake
+        return -1;
     }
+}
+
+// Adaugă această funcție pentru a crea un nou SymElements
+int create_new_sym_elements(int entity1_id, int entity2_id) {
+    // Normalizează ordinea
+    int id1 = (entity1_id < entity2_id) ? entity1_id : entity2_id;
+    int id2 = (entity1_id < entity2_id) ? entity2_id : entity1_id;
+
+    // Incrementăm contorul și salvăm noua pereche
+    global_sym_counter++;
+    last_entity1 = id1;
+    last_entity2 = id2;
+
+    return global_sym_counter;
 }
 
 int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, const char* password, EVP_PKEY** pkey, EVP_PKEY** peerkey)
@@ -413,7 +425,7 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
     printf("Handshake successful! Saving symmetric elements...\n");
 
     // Calculează ID-ul pentru SymElements (combinație unică)
-    int sym_elements_id = get_sym_elements_id_for_transaction(entity1->entity_id, entity2->entity_id);
+    int sym_elements_id = create_new_sym_elements(entity1->entity_id, entity2->entity_id);
 
     // Salvează elementele simetrice pentru comunicarea lor
     if (!save_sym_elements(symKey1, iv1, sym_elements_id)) {

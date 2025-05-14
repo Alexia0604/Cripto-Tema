@@ -1,5 +1,5 @@
 ﻿// input_parser.c
-#pragma warning(disable:4996)  // Disable deprecation warnings pentru MSVC
+#pragma warning(disable:4996) 
 
 #include "input_parser.h"
 
@@ -15,9 +15,13 @@ InputData* parse_input_file(const char* filename) {
         fclose(file);
         return NULL;
     }
+    data->num_entities = 15;
+    
 
+    printf("\nales: %d\n", data->num_entities);
     // Citește numărul de entități
     if (fscanf(file, "%d", &data->num_entities) != 1) {
+        printf("\nales: %d\n", &data->num_entities);
         fprintf(stderr, "Failed to read number of entities\n");
         fclose(file);
         free(data);
