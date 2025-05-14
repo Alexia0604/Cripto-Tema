@@ -169,7 +169,7 @@ int main(int argc, char* argv[]) {
         // Creează numele fișierului pentru tranzacție
         char transaction_filename[256];
         snprintf(transaction_filename, sizeof(transaction_filename),
-            "%d_%d_%d.trx", sender->entity_id, receiver->entity_id, atoi(tr->transaction_id));
+            "%d_%d_%s.trx", sender->entity_id, receiver->entity_id, tr->transaction_id);
 
         // Creează tranzacția
         if (create_transaction(sender, receiver, tr->subject,

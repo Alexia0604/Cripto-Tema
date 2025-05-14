@@ -506,6 +506,12 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
     printf("==========================\n");
 
     ret = 1;
+    char log_msg[256];
+    snprintf(log_msg, sizeof(log_msg), "Transaction verified: ID %ld, From ID %ld to ID %ld",
+        ASN1_INTEGER_get(transaction->TransactionID),
+        ASN1_INTEGER_get(transaction->SenderID),
+        ASN1_INTEGER_get(transaction->ReceiverID));
+    log_action("System", log_msg);
 
     // Cleanup
     free(decrypted_message);
@@ -517,12 +523,6 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
     Transaction_free(transaction);
     free(file_data);
 
-    char log_msg[256];
-    snprintf(log_msg, sizeof(log_msg), "Transaction verified: ID %ld, From ID %ld to ID %ld",
-        ASN1_INTEGER_get(transaction->TransactionID),
-        ASN1_INTEGER_get(transaction->SenderID),
-        ASN1_INTEGER_get(transaction->ReceiverID));
-    log_action("System", log_msg);
 
     return ret;
 }
