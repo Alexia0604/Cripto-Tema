@@ -11,19 +11,17 @@
 #include "logging.h"
 
 
-int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, EVP_PKEY** pkey, EVP_PKEY** peerkey);
+int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, const char* password, EVP_PKEY** pkey, EVP_PKEY** peerkey);
 int generate_shared_secret(EVP_PKEY* pkey, EVP_PKEY* peerkey, unsigned char** skey, size_t* skeylen);
 int extract_coordinates(EVP_PKEY* pkey, EVP_PKEY* peerkey, unsigned char** x_bytes, size_t* x_len, unsigned char** y_bytes, size_t* y_len);
 int derive_symmetric_key(unsigned char* x_bytes, size_t x_len, unsigned char* y_bytes, size_t y_len, unsigned char** symKey, unsigned char** symRightUnused, size_t* symRightUnusedLen);
-unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilename, unsigned char** symRightUnused, size_t* symRightUnusedLen, unsigned char** iv);
+unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilename, const char* password1, const char* password2, unsigned char** symRightUnused, size_t* symRightUnusedLen, unsigned char** iv);
 int generate_handshake(SecureProfile* entity1, SecureProfile* entity2);
 int aes_256_fancy_ofb_encrypt(unsigned char* plaintext, size_t plaintext_len, unsigned char* key, unsigned char* iv, unsigned char** ciphertext, size_t* ciphertext_len);
 int aes_256_fancy_ofb_decrypt(unsigned char* ciphertext, size_t ciphertext_len, unsigned char* key, unsigned char* iv, unsigned char** plaintext, size_t* plaintext_len);
 
-int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, EVP_PKEY** pkey, EVP_PKEY** peerkey)
+int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, const char* password, EVP_PKEY** pkey, EVP_PKEY** peerkey)
 {
-    const char* password = "password";  // Aceeași parolă folosită la salvare
-
     *pkey = EVP_PKEY_new();
     *peerkey = EVP_PKEY_new();
 
@@ -37,7 +35,7 @@ int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, EVP_PK
         return 0;
     }
 
-    // Adaugă parola la citirea cheii private
+    // Folosește parola specifică
     if (!PEM_read_PrivateKey(fp, pkey, NULL, (void*)password)) {
         fprintf(stderr, "Failed to read private key from %s\n", privateKeyFilename);
         fclose(fp);
@@ -267,7 +265,7 @@ int derive_symmetric_key(unsigned char* x_bytes, size_t x_len, unsigned char* y_
     return 1;
 }
 
-unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilename, unsigned char** symRightUnused, size_t* symRightUnusedLen, unsigned char** iv) {
+unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilename, const char* password1, const char* password2, unsigned char** symRightUnused, size_t* symRightUnusedLen, unsigned char** iv) {
     EVP_PKEY* pkey = NULL;
     EVP_PKEY* peerkey = NULL;
     unsigned char* x_bytes = NULL;
@@ -277,7 +275,7 @@ unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilena
     unsigned char* symKey = NULL;
 
     // Citește cheile
-    if (!read_keys(ecPrivateKeyFilename, ecPubKeyFilename, &pkey, &peerkey)) {
+    if (!read_keys(ecPrivateKeyFilename, ecPubKeyFilename,password1, &pkey, &peerkey)) {
         return NULL;
     }
 
@@ -353,7 +351,7 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
 
     // Schimb de chei ECDH - entity1
     printf("%s switches keys with %s...\n", entity1->entity_name, entity2->entity_name);
-    symKey1 = ecdh(private_path_1, public_path_2, &symRightUnused1, &symRightUnusedLength1, &iv1);
+    symKey1 = ecdh(private_path_1, public_path_2, entity1->password, NULL,&symRightUnused1, &symRightUnusedLength1, &iv1);
     if (!symKey1)
     {
         fprintf(stderr, "ECDH failed for %s\n", entity1->entity_name);
@@ -364,7 +362,7 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
 
     // Schimb de chei ECDH - entity2
     printf("%s switches keys with %s...\n", entity2->entity_name, entity1->entity_name);
-    symKey2 = ecdh(private_path_2, public_path_1, &symRightUnused2, &symRightUnusedLength2, &iv2);
+    symKey2 = ecdh(private_path_2, public_path_1,entity2->password,NULL, &symRightUnused2, &symRightUnusedLength2, &iv2);
     if (!symKey2)
     {
         fprintf(stderr, "ECDH failed for %s\n", entity2->entity_name);

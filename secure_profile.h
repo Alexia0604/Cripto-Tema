@@ -9,6 +9,7 @@
 
 typedef struct {
     char* entity_name;
+    char* password;
     int entity_id;
     EVP_PKEY* private_key;
     EVP_PKEY* public_key;
@@ -19,17 +20,18 @@ typedef struct {
 } SecureProfile;
 
 
-SecureProfile* create_SecureProfile(const char* name, int id);
+SecureProfile* create_SecureProfile(const char* name,const char* password, int id);
 int generate_entity_keys(SecureProfile* entity);
 int generate_rsa_keys(SecureProfile* entity);
 int save_entity_keys(SecureProfile* entity);
 int save_rsa_keys(SecureProfile* entity);
 
-SecureProfile* create_SecureProfile(const char* name, int id) {
+SecureProfile* create_SecureProfile(const char* name,const char* password, int id) {
     SecureProfile* entity = (SecureProfile*)malloc(sizeof(SecureProfile));
     if (!entity) return NULL;
 
     entity->entity_name = strdup(name);
+    entity->password = strdup(password);
     entity->entity_id = id;
     entity->private_key = NULL;
     entity->public_key = NULL;
@@ -103,7 +105,6 @@ int save_entity_keys(SecureProfile* entity)
     BIO* public_bio = NULL;
     char private_path[256], public_path[256];
     int ret = 0;
-    const char* password = "password";
 
     create_output_dirs();
 
@@ -118,7 +119,7 @@ int save_entity_keys(SecureProfile* entity)
         goto cleanup;
     }
 
-    if (!PEM_write_bio_PrivateKey(private_bio, entity->private_key, EVP_aes_256_cbc(), (unsigned char*)password, strlen(password), NULL, NULL)) {
+    if (!PEM_write_bio_PrivateKey(private_bio, entity->private_key, EVP_aes_256_cbc(), (unsigned char*)entity->password, strlen(entity->password), NULL, NULL)) {
         fprintf(stderr, "Failed to save private key\n");
         log_action(entity->entity_name, "Failed to save private key");
         goto cleanup;
@@ -151,7 +152,7 @@ int save_rsa_keys(SecureProfile* entity)
     private_bio = BIO_new_file(private_path, "w");
     public_bio = BIO_new_file(public_path, "w");
 
-    PEM_write_bio_PrivateKey(private_bio, entity->rsa_key, EVP_aes_256_cbc(), (unsigned char*)"password", strlen("password"), NULL, NULL);
+    PEM_write_bio_PrivateKey(private_bio, entity->rsa_key, EVP_aes_256_cbc(), (unsigned char*)entity->password, strlen(entity->password), NULL, NULL);
 
     PEM_write_bio_PUBKEY(public_bio, entity->rsa_key);
 
