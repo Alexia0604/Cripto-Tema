@@ -38,7 +38,7 @@ IMPLEMENT_ASN1_FUNCTIONS(Transaction);
 
 
 int generate_transaction_id(SecureProfile* sender, SecureProfile* receiver);
-int sign_transaction_data(unsigned char* data, size_t data_len, const char* rsa_private_key_file, unsigned char** signature, size_t* signature_len);
+int sign_transaction_data(unsigned char* data, size_t data_len, const char* rsa_private_key_file, const char* password, unsigned char** signature, size_t* signature_len);
 int create_transaction(SecureProfile* sender, SecureProfile* receiver, const char* subject, const char* message, const char* transaction_name);
 int verify_and_read_transaction(const char* transaction_name, const char* rsa_public_key_file);
 
@@ -55,8 +55,9 @@ int generate_transaction_id(SecureProfile* sender, SecureProfile* receiver) {
     return transaction_id;
 }
 
-int sign_transaction_data(unsigned char* data, size_t data_len, const char* rsa_private_key_file, unsigned char** signature, size_t* signature_len) {
+int sign_transaction_data(unsigned char* data, size_t data_len, const char* rsa_private_key_file, const char* password, unsigned char** signature, size_t* signature_len) {
     BIO* bio = NULL;
+    RSA* rsa = NULL;
     EVP_PKEY* rsa_key = NULL;
     EVP_MD_CTX* mdctx = NULL;
     int ret = 0;
@@ -67,11 +68,20 @@ int sign_transaction_data(unsigned char* data, size_t data_len, const char* rsa_
         return 0;
     }
 
-    rsa_key = PEM_read_bio_PrivateKey(bio, NULL, NULL, (void*)"password");
+    rsa = PEM_read_bio_RSAPrivateKey(bio, NULL, NULL, (void*)password);
     BIO_free(bio);
 
-    if (!rsa_key) {
+    if (!rsa) {
         fprintf(stderr, "Failed to load RSA private key\n");
+        return 0;
+    }
+
+    // Convertește RSA în EVP_PKEY pentru semnare
+    rsa_key = EVP_PKEY_new();
+    if (!rsa_key || EVP_PKEY_assign_RSA(rsa_key, rsa) != 1) {
+        fprintf(stderr, "Failed to convert RSA to EVP_PKEY\n");
+        if (rsa_key) EVP_PKEY_free(rsa_key);
+        else RSA_free(rsa);
         return 0;
     }
 
@@ -155,7 +165,7 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
         return 0;
     }
 
-    if (!aes_256_fancy_ofb_encrypt((unsigned char*)message, strlen(message),
+    if (!aes_128_fancy_ofb_encrypt((unsigned char*)message, strlen(message),
         symKey, iv, &encrypted_data, &encrypted_len)) {
         fprintf(stderr, "Failed to encrypt message\n");
         free(symKey);
@@ -194,7 +204,7 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
         "keys/rsa_private_%s.pem", sender->entity_name);
 
     if (!sign_transaction_data(data_to_sign, data_to_sign_len,
-        rsa_private_key_path, &signature, &signature_len)) {
+        rsa_private_key_path,sender->password, &signature, &signature_len)) {
         fprintf(stderr, "Failed to sign transaction\n");
         Transaction_free(transaction);
         free(symKey);
@@ -319,7 +329,7 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
         fclose(file);
         return 0;
     }
-
+    
     size_t bytes_read = fread(file_data, 1, file_size, file);
     if (bytes_read != file_size) {
         fprintf(stderr, "Failed to read file. Read: %zu, Expected: %ld\n",
@@ -366,11 +376,22 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
         return 0;
     }
 
-    rsa_key = PEM_read_bio_PUBKEY(bio, NULL, NULL, NULL);
+    // Citește RSA public key în format PKCS#1
+    RSA* rsa = PEM_read_bio_RSA_PUBKEY(bio, NULL, NULL, NULL);
     BIO_free(bio);
 
-    if (!rsa_key) {
+    if (!rsa) {
         fprintf(stderr, "Failed to load RSA public key\n");
+        Transaction_free(transaction);
+        free(file_data);
+        return 0;
+    }
+
+    // Convertește în EVP_PKEY
+    rsa_key = EVP_PKEY_new();
+    if (!rsa_key || EVP_PKEY_assign_RSA(rsa_key, rsa) != 1) {
+        fprintf(stderr, "Failed to convert RSA to EVP_PKEY\n");
+        RSA_free(rsa);
         Transaction_free(transaction);
         free(file_data);
         return 0;
@@ -452,7 +473,7 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
     }
 
     // Decriptează mesajul
-    if (!aes_256_fancy_ofb_decrypt(transaction->EncryptedData->data,
+    if (!aes_128_fancy_ofb_decrypt(transaction->EncryptedData->data,
         transaction->EncryptedData->length,
         symKey, iv, &decrypted_message, &decrypted_len)) {
         fprintf(stderr, "Failed to decrypt message\n");

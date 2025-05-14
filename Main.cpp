@@ -5,6 +5,7 @@
 
 #include <openssl/applink.c>
 
+#include "input_parser.h"
 #include "utils.h"
 #include "logging.h"
 #include "secure_profile.h" 
@@ -13,181 +14,207 @@
 #include "crypto_operations.h"
 #include "transaction.h"
 
-int main()
-{
+// Funcție ajutătoare pentru a găsi o entitate după ID
+SecureProfile* find_entity_by_id(SecureProfile** entities, int num_entities, const char* id) {
+    for (int i = 0; i < num_entities; i++) {
+        if (strcmp(entities[i]->entity_name, id) == 0) {
+            return entities[i];
+        }
+    }
+    return NULL;
+}
+
+int main(int argc, char* argv[]) {
+    // Verifică argumentele
+    if (argc < 2) {
+        fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
+        return 1;
+    }
+
+    // Parsează fișierul de input
+    InputData* input_data = parse_input_file(argv[1]);
+    if (!input_data) {
+        fprintf(stderr, "Failed to parse input file\n");
+        return 1;
+    }
+
     log_action("System", "Application started");
-
     create_output_dirs();
-
     log_action("System", "Created output directories");
 
-    SecureProfile* entity1 = create_SecureProfile("entity1", 1);
-    SecureProfile* entity2 = create_SecureProfile("entity2", 2);
-    if (!entity1 || !entity2)
-    {
-        fprintf(stderr, "Failed to create entity\n");
-        log_action("System", "Failed to create entities");
+    // Creează un array pentru entități
+    SecureProfile** entities = (SecureProfile**)malloc(
+        input_data->num_entities * sizeof(SecureProfile*));
+    if (!entities) {
+        free_input_data(input_data);
+        return 1;
+    }
 
-        if (entity1) 
-        {
-            if (entity1->entity_name) free(entity1->entity_name);
-            free(entity1);
+    // Creează entitățile bazate pe input
+    for (int i = 0; i < input_data->num_entities; i++) {
+        entities[i] = create_SecureProfile(
+            input_data->entity_ids[i],
+            input_data->entity_passwords[i],  // Folosește parola din input
+            i + 1
+        );
+
+        if (!entities[i]) {
+            fprintf(stderr, "Failed to create entity: %s\n",
+                input_data->entity_ids[i]);
+            // Cleanup
+            for (int j = 0; j < i; j++) {
+                if (entities[j]->entity_name) free(entities[j]->entity_name);
+                if (entities[j]->password) free(entities[j]->password);
+                free(entities[j]);
+            }
+            free(entities);
+            free_input_data(input_data);
+            return 1;
         }
-        if (entity2) 
-        {
-            if (entity2->entity_name) free(entity2->entity_name);
-            free(entity2);
+
+        // Generează cheile EC
+        printf("Generating EC key for %s...\n", entities[i]->entity_name);
+        if (!generate_entity_keys(entities[i])) {
+            fprintf(stderr, "EC key generation failed for entity: %s\n",
+                entities[i]->entity_name);
+            // Cleanup complet
+            // ...
+            return 1;
         }
-        return 1;
-    }
 
-    log_action("System", "Created entities: entity1 and entity2");
+        entities[i]->public_key = entities[i]->private_key;
 
-    printf("Generating EC key...\n");
-    if (!generate_entity_keys(entity1) || !generate_entity_keys(entity2)) 
-    {
-        fprintf(stderr, "Key generation failed!\n");
-        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
-        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
-        if (entity1->entity_name) free(entity1->entity_name);
-        if (entity2->entity_name) free(entity2->entity_name);
-        free(entity1);
-        free(entity2);
-        return 1;
-    }
+        // Salvează cheile EC
+        printf("Saving EC keys for %s...\n", entities[i]->entity_name);
+        if (!save_entity_keys(entities[i])) {
+            fprintf(stderr, "Failed to save EC keys for entity: %s\n",
+                entities[i]->entity_name);
+            // Cleanup
+            return 1;
+        }
 
-    entity1->public_key = entity1->private_key;
-    entity2->public_key = entity2->private_key;
+        // Generează cheile RSA
+        printf("Generating RSA keys for %s...\n", entities[i]->entity_name);
+        if (!generate_rsa_keys(entities[i])) {
+            fprintf(stderr, "RSA key generation failed for entity: %s\n",
+                entities[i]->entity_name);
+            // Cleanup
+            return 1;
+        }
 
-    printf("Saving keys to pem directory...\n");
-    if (!save_entity_keys(entity1) || !save_entity_keys(entity2)) 
-    {
-        fprintf(stderr, "Saving keys failed!\n");
-        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
-        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
-        if (entity1->entity_name) free(entity1->entity_name);
-        if (entity2->entity_name) free(entity2->entity_name);
-        free(entity1);
-        free(entity2);
-        return 1;
-    }
+        // Salvează cheile RSA
+        printf("Saving RSA keys for %s...\n", entities[i]->entity_name);
+        if (!save_rsa_keys(entities[i])) {
+            fprintf(stderr, "Failed to save RSA keys for entity: %s\n",
+                entities[i]->entity_name);
+            // Cleanup
+            return 1;
+        }
 
-    printf("Generating RSA keys...\n");
-    if (!generate_rsa_keys(entity1) || !generate_rsa_keys(entity2)) 
-    {
-        fprintf(stderr, "RSA key generation failed!\n");
-        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
-        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
-        if (entity1->rsa_key) EVP_PKEY_free(entity1->rsa_key);
-        if (entity2->rsa_key) EVP_PKEY_free(entity2->rsa_key);
-        if (entity1->entity_name) free(entity1->entity_name);
-        if (entity2->entity_name) free(entity2->entity_name);
-        free(entity1);
-        free(entity2);
-        return 1;
-    }
-
-    printf("Saving RSA keys...\n");
-    if (!save_rsa_keys(entity1) || !save_rsa_keys(entity2)) 
-    {
-        fprintf(stderr, "Saving RSA keys failed!\n");
-        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
-        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
-        if (entity1->rsa_key) EVP_PKEY_free(entity1->rsa_key);
-        if (entity2->rsa_key) EVP_PKEY_free(entity2->rsa_key);
-        if (entity1->entity_name) free(entity1->entity_name);
-        if (entity2->entity_name) free(entity2->entity_name);
-        free(entity1);
-        free(entity2);
-        return 1;
-    }
-
-    printf("Computing and saving GMAC...\n");
-    if (!compute_gmac(entity1) || !compute_gmac(entity2)) 
-    {
-        fprintf(stderr, "GMAC computation failed!\n");
-        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
-        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
-        if (entity1->rsa_key) EVP_PKEY_free(entity1->rsa_key);
-        if (entity2->rsa_key) EVP_PKEY_free(entity2->rsa_key);
-        if (entity1->gmac) free(entity1->gmac);
-        if (entity2->gmac) free(entity2->gmac);
-        if (entity1->entity_name) free(entity1->entity_name);
-        if (entity2->entity_name) free(entity2->entity_name);
-        free(entity1);
-        free(entity2);
-        return 1;
-    }
-
-    printf("Success to generate and save keys!\n");
-
-    printf("Handshake initialize...\n");
-    if (!generate_handshake(entity1, entity2)) 
-    {
-        fprintf(stderr, "Handshake failed!\n");
-        if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
-        if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
-        if (entity1->rsa_key) EVP_PKEY_free(entity1->rsa_key);
-        if (entity2->rsa_key) EVP_PKEY_free(entity2->rsa_key);
-        if (entity1->gmac) free(entity1->gmac);
-        if (entity2->gmac) free(entity2->gmac);
-        if (entity1->entity_name) free(entity1->entity_name);
-        if (entity2->entity_name) free(entity2->entity_name);
-        free(entity1);
-        free(entity2);
-        return 1;
-    }
-
-    printf("\n=== Transaction System Test ===\n");
-
-    const char* message1 = "Transfer 100 RON pentru servicii consultanta";
-    const char* subject1 = "Plata servicii";
-
-    if (create_transaction(entity1, entity2, subject1, message1, "transaction_1_to_2.der")) 
-    {
-        printf("\nTransaction created successfully!\n");
-
-        char rsa_public_key_path[512];
-        snprintf(rsa_public_key_path, sizeof(rsa_public_key_path),
-            "keys/rsa_public_%s.pem", entity1->entity_name);
-
-        printf("\n=== Verifying Transaction ===\n");
-        if (verify_and_read_transaction("transaction_1_to_2.der", rsa_public_key_path)) {
-            printf("Transaction verified successfully!\n");
+        // Calculează GMAC pentru cheia publică EC
+        printf("Computing GMAC for %s...\n", entities[i]->entity_name);
+        if (!compute_gmac(entities[i])) {
+            fprintf(stderr, "GMAC computation failed for entity: %s\n",
+                entities[i]->entity_name);
+            // Cleanup
+            return 1;
         }
     }
 
-    const char* message2 = "Confirmare plata primita. Multumesc!";
-    const char* subject2 = "Confirmare plata";
+    printf("\n=== All entities created and keys generated ===\n");
 
-    if (create_transaction(entity2, entity1, subject2, message2, "transaction_2_to_1.der")) 
-    {
-        printf("\nSecond transaction created successfully!\n");
+    // Realizează handshake între toate perechile unice de entități
+    printf("\n=== Performing handshakes ===\n");
+    for (int i = 0; i < input_data->num_entities; i++) {
+        for (int j = i + 1; j < input_data->num_entities; j++) {
+            printf("\nHandshake between %s and %s...\n",
+                entities[i]->entity_name, entities[j]->entity_name);
 
-        char rsa_public_key_path2[512];
-        snprintf(rsa_public_key_path2, sizeof(rsa_public_key_path2),
-            "keys/rsa_public_%s.pem", entity2->entity_name);
+            if (!generate_handshake(entities[i], entities[j])) {
+                fprintf(stderr, "Handshake failed between %s and %s!\n",
+                    entities[i]->entity_name, entities[j]->entity_name);
+                // Continuăm cu alte handshake-uri
+                char log_msg[256];
+                snprintf(log_msg, sizeof(log_msg),
+                    "Handshake failed with %s", entities[j]->entity_name);
+                log_action(entities[i]->entity_name, log_msg);
+            }
+        }
+    }
 
-        printf("\n=== Verifying Second Transaction ===\n");
-        if (verify_and_read_transaction("transaction_2_to_1.der", rsa_public_key_path2)) {
-            printf("Second transaction verified successfully!\n");
+    // Procesează tranzacțiile din input
+    printf("\n=== Processing transactions ===\n");
+    for (int i = 0; i < input_data->num_transactions; i++) {
+        TransactionInput* tr = &input_data->transactions[i];
+
+        // Găsește entitățile sender și receiver
+        SecureProfile* sender = find_entity_by_id(entities,
+            input_data->num_entities, tr->sender_id);
+        SecureProfile* receiver = find_entity_by_id(entities,
+            input_data->num_entities, tr->receiver_id);
+
+        if (!sender || !receiver) {
+            fprintf(stderr, "Transaction %s: Invalid sender or receiver ID\n",
+                tr->transaction_id);
+            continue;
+        }
+
+        printf("\nCreating transaction %s from %s to %s...\n",
+            tr->transaction_id, sender->entity_name, receiver->entity_name);
+
+        // Creează numele fișierului pentru tranzacție
+        char transaction_filename[256];
+        snprintf(transaction_filename, sizeof(transaction_filename),
+            "%s_%s_%s.der", sender->entity_name, receiver->entity_name,
+            tr->transaction_id);
+
+        // Creează tranzacția folosind subiectul din input
+        if (create_transaction(sender, receiver, tr->subject,  // Folosește subiectul
+            tr->message, transaction_filename)) {
+            printf("Transaction %s created successfully!\n", tr->transaction_id);
+
+            // Verifică tranzacția
+            char rsa_public_key_path[512];
+            snprintf(rsa_public_key_path, sizeof(rsa_public_key_path),
+                "keys/rsa_public_%s.pem", sender->entity_name);
+
+            printf("Verifying transaction %s...\n", tr->transaction_id);
+            if (verify_and_read_transaction(transaction_filename,
+                rsa_public_key_path)) {
+                printf("Transaction %s verified successfully!\n",
+                    tr->transaction_id);
+            }
+            else {
+                fprintf(stderr, "Failed to verify transaction %s\n",
+                    tr->transaction_id);
+            }
+        }
+        else {
+            fprintf(stderr, "Failed to create transaction %s\n",
+                tr->transaction_id);
         }
     }
 
     printf("\n=== All operations completed! ===\n");
     log_action("System", "Application completed successfully");
 
-    if (entity1->private_key) EVP_PKEY_free(entity1->private_key);
-    if (entity2->private_key) EVP_PKEY_free(entity2->private_key);
-    if (entity1->rsa_key) EVP_PKEY_free(entity1->rsa_key);
-    if (entity2->rsa_key) EVP_PKEY_free(entity2->rsa_key);
-    if (entity1->gmac) free(entity1->gmac);
-    if (entity2->gmac) free(entity2->gmac);
-    if (entity1->entity_name) free(entity1->entity_name);
-    if (entity2->entity_name) free(entity2->entity_name);
-    free(entity1);
-    free(entity2);
+    // Cleanup complet
+    for (int i = 0; i < input_data->num_entities; i++) {
+        if (entities[i]) {
+            if (entities[i]->entity_name) free(entities[i]->entity_name);
+            if (entities[i]->password) free(entities[i]->password);
+            if (entities[i]->private_key) EVP_PKEY_free(entities[i]->private_key);
+            if (entities[i]->rsa_key) EVP_PKEY_free(entities[i]->rsa_key);
+            if (entities[i]->gmac) free(entities[i]->gmac);
+            free(entities[i]);
+        }
+    }
+    free(entities);
 
+    // Eliberează datele de input
+    free_input_data(input_data);
+
+    // Afișează log-ul
     display_log();
 
     return 0;

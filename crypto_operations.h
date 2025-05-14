@@ -17,8 +17,8 @@ int extract_coordinates(EVP_PKEY* pkey, EVP_PKEY* peerkey, unsigned char** x_byt
 int derive_symmetric_key(unsigned char* x_bytes, size_t x_len, unsigned char* y_bytes, size_t y_len, unsigned char** symKey, unsigned char** symRightUnused, size_t* symRightUnusedLen);
 unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilename, const char* password1, const char* password2, unsigned char** symRightUnused, size_t* symRightUnusedLen, unsigned char** iv);
 int generate_handshake(SecureProfile* entity1, SecureProfile* entity2);
-int aes_256_fancy_ofb_encrypt(unsigned char* plaintext, size_t plaintext_len, unsigned char* key, unsigned char* iv, unsigned char** ciphertext, size_t* ciphertext_len);
-int aes_256_fancy_ofb_decrypt(unsigned char* ciphertext, size_t ciphertext_len, unsigned char* key, unsigned char* iv, unsigned char** plaintext, size_t* plaintext_len);
+int aes_128_fancy_ofb_encrypt(unsigned char* plaintext, size_t plaintext_len, unsigned char* key, unsigned char* iv, unsigned char** ciphertext, size_t* ciphertext_len);
+int aes_128_fancy_ofb_decrypt(unsigned char* ciphertext, size_t ciphertext_len, unsigned char* key, unsigned char* iv, unsigned char** plaintext, size_t* plaintext_len);
 
 int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, const char* password, EVP_PKEY** pkey, EVP_PKEY** peerkey)
 {
@@ -325,10 +325,10 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
     log_action(entity1->entity_name, log_msg);
 
     // Construiește căile fișierelor
-    snprintf(private_path_1, sizeof(private_path_1), "keys/private_%s.pem", entity1->entity_name);
-    snprintf(public_path_1, sizeof(public_path_1), "keys/public_%s.pem", entity1->entity_name);
-    snprintf(private_path_2, sizeof(private_path_2), "keys/private_%s.pem", entity2->entity_name);
-    snprintf(public_path_2, sizeof(public_path_2), "keys/public_%s.pem", entity2->entity_name);
+    snprintf(private_path_1, sizeof(private_path_1), "keys/%s_priv.ecc", entity1->entity_name);
+    snprintf(public_path_1, sizeof(public_path_1), "keys/%s_pub.ecc", entity1->entity_name);
+    snprintf(private_path_2, sizeof(private_path_2), "keys/%s_priv.ecc", entity2->entity_name);
+    snprintf(public_path_2, sizeof(public_path_2), "keys/%s_pub.ecc", entity2->entity_name);
 
     // Validează autenticitatea cheilor publice
     printf("Verifying authenticity of %s's public key...\n", entity2->entity_name);
@@ -433,12 +433,12 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
     return 1;
 }
 
-int aes_256_fancy_ofb_encrypt(unsigned char* plaintext, size_t plaintext_len, unsigned char* key, unsigned char* iv, unsigned char** ciphertext, size_t* ciphertext_len) {
+int aes_128_fancy_ofb_encrypt(unsigned char* plaintext, size_t plaintext_len, unsigned char* key, unsigned char* iv, unsigned char** ciphertext, size_t* ciphertext_len) {
     AES_KEY aes_key;
     unsigned char* output = NULL;
 
-    // Verifică lungimea cheii (trebuie 16 bytes pentru AES-256)
-    if (AES_set_encrypt_key(key, 16 * 8, &aes_key) != 0) {
+    // Verifică lungimea cheii
+    if (AES_set_encrypt_key(key, 128, &aes_key) != 0) {
         fprintf(stderr, "Error setting AES key!\n");
         return 0;
     }
@@ -490,13 +490,13 @@ int aes_256_fancy_ofb_encrypt(unsigned char* plaintext, size_t plaintext_len, un
     return 1;
 }
 
-int aes_256_fancy_ofb_decrypt(unsigned char* ciphertext, size_t ciphertext_len, unsigned char* key, unsigned char* iv, unsigned char** plaintext, size_t* plaintext_len)
+int aes_128_fancy_ofb_decrypt(unsigned char* ciphertext, size_t ciphertext_len, unsigned char* key, unsigned char* iv, unsigned char** plaintext, size_t* plaintext_len)
 {
     AES_KEY aes_key;
     unsigned char* output = NULL;
 
     // Verifică lungimea cheii
-    if (AES_set_encrypt_key(key, 16 * 8, &aes_key) != 0) {
+    if (AES_set_encrypt_key(key, 128, &aes_key) != 0) {
         fprintf(stderr, "Error setting AES key!\n");
         return 0;
     }
