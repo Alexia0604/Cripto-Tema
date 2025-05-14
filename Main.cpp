@@ -6,7 +6,6 @@
 #include <openssl/applink.c>
 
 #include "input_parser.h"
-#include "utils.h"
 #include "logging.h"
 #include "secure_profile.h" 
 #include "gmac_operations.h"
@@ -165,18 +164,18 @@ int main(int argc, char* argv[]) {
         // Creează numele fișierului pentru tranzacție
         char transaction_filename[256];
         snprintf(transaction_filename, sizeof(transaction_filename),
-            "%s_%s_%s.der", sender->entity_name, receiver->entity_name,
+            "%d_%d_%d.trx", sender->entity_id, receiver->entity_id,
             tr->transaction_id);
 
         // Creează tranzacția folosind subiectul din input
-        if (create_transaction(sender, receiver, tr->subject,  // Folosește subiectul
-            tr->message, transaction_filename)) {
+        if (create_transaction(sender, receiver, tr->subject,
+            tr->message, tr->transaction_id, transaction_filename)) {
             printf("Transaction %s created successfully!\n", tr->transaction_id);
 
             // Verifică tranzacția
             char rsa_public_key_path[512];
             snprintf(rsa_public_key_path, sizeof(rsa_public_key_path),
-                "keys/rsa_public_%s.pem", sender->entity_name);
+                "keys/%d_pub.rsa", sender->entity_id);
 
             printf("Verifying transaction %s...\n", tr->transaction_id);
             if (verify_and_read_transaction(transaction_filename,

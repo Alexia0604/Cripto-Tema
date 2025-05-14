@@ -265,7 +265,7 @@ int compute_gmac(SecureProfile* entity)
     PubKeyMAC_free(pub_key_mac);
 
     // Salvează în fișier raw
-    snprintf(mac_path, sizeof(mac_path), "macs/public_%s.gmac", entity->entity_name);
+    snprintf(mac_path, sizeof(mac_path), "macs/%d_ecc.mac", entity->entity_id);
     BIO* mac_bio = BIO_new_file(mac_path, "wb");
     if (!mac_bio) {
         fprintf(stderr, "Failed to open mac file\n");
@@ -317,7 +317,7 @@ int validate_autenticity(SecureProfile* entity)
     }
 
     // Construiește calea către fișierul cheii publice
-    snprintf(pub_key_path, sizeof(pub_key_path), "keys/public_%s.pem", entity->entity_name);
+    snprintf(pub_key_path, sizeof(pub_key_path), "keys/%d_pub.ecc", entity->entity_id);
 
     // Citește cheia publică din fișier
     BIO* pub_bio = BIO_new_file(pub_key_path, "r");
@@ -335,7 +335,7 @@ int validate_autenticity(SecureProfile* entity)
     BIO_free(pub_bio);
 
     // Construiește calea către fișierul GMAC
-    snprintf(gmac_path, sizeof(gmac_path), "macs/public_%s.gmac", entity->entity_name);
+    snprintf(gmac_path, sizeof(gmac_path), "macs/%d_ecc.mac", entity->entity_id);
 
     // Citește fișierul GMAC și decodează structura PubKeyMAC
     BIO* mac_bio = BIO_new_file(gmac_path, "rb");

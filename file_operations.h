@@ -52,7 +52,7 @@ int save_sym_elements(unsigned char* symKey, unsigned char* iv, int elementID)
     BIO_write(b64, der_buf, der_len);
     BIO_flush(b64);
 
-    snprintf(filename, sizeof(filename), "sym/sym_elements_%d.b64", elementID);
+    snprintf(filename, sizeof(filename), "sym/%d.sym", elementID);
     printf("Saving SymElements to: %s\n", filename);
     BIO* file_bio = BIO_new_file(filename, "w");
 
@@ -77,7 +77,7 @@ int load_sym_elements(int sym_elements_id, unsigned char** symKey, unsigned char
     SymElements* sym_elem = NULL;
     int ret = 0;
 
-    snprintf(filename, sizeof(filename), "sym/sym_elements_%d.b64", sym_elements_id);
+    snprintf(filename, sizeof(filename), "sym/%d.sym", sym_elements_id);
 
     bio = BIO_new_file(filename, "r");
     if (!bio) {

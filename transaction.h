@@ -9,7 +9,6 @@
 #include "secure_profile.h"
 #include "crypto_operations.h"
 #include "file_operations.h"
-#include "utils.h"
 #include "logging.h"
 
 
@@ -39,7 +38,7 @@ IMPLEMENT_ASN1_FUNCTIONS(Transaction);
 
 int generate_transaction_id(SecureProfile* sender, SecureProfile* receiver);
 int sign_transaction_data(unsigned char* data, size_t data_len, const char* rsa_private_key_file, const char* password, unsigned char** signature, size_t* signature_len);
-int create_transaction(SecureProfile* sender, SecureProfile* receiver, const char* subject, const char* message, const char* transaction_name);
+int create_transaction(SecureProfile* sender, SecureProfile* receiver, const char* subject, const char* message, const char* transaction_id_str, const char* transaction_name);
 int verify_and_read_transaction(const char* transaction_name, const char* rsa_public_key_file);
 
 int generate_transaction_id(SecureProfile* sender, SecureProfile* receiver) {
@@ -138,7 +137,7 @@ int sign_transaction_data(unsigned char* data, size_t data_len, const char* rsa_
     return ret;
 }
 
-int create_transaction(SecureProfile* sender, SecureProfile* receiver, const char* subject, const char* message, const char* transaction_name) {
+int create_transaction(SecureProfile* sender, SecureProfile* receiver, const char* subject, const char* message, const char* transaction_id_str, const char* transaction_name) {
     Transaction* transaction = NULL;
     unsigned char* symKey = NULL;
     unsigned char* iv = NULL;
@@ -156,7 +155,16 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
         receiver->entity_name, subject);
     log_action(sender->entity_name, log_msg);
 
-    int sym_elements_id = calculate_sym_elements_id(sender->entity_id, receiver->entity_id);
+    int sym_elements_id = get_sym_elements_id_for_transaction(sender->entity_id, receiver->entity_id);
+
+    char sym_filename[256];
+    snprintf(sym_filename, sizeof(sym_filename), "sym/%d.sym", sym_elements_id);
+    FILE* test_file = fopen(sym_filename, "r");
+    if (!test_file) {
+        fprintf(stderr, "No SymElements file found at %s. Need to create handshake first.\n", sym_filename);
+        return 0;
+    }
+    fclose(test_file);
 
     printf("Looking for SymElements ID: %d\n", sym_elements_id);
 
@@ -182,7 +190,7 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
         return 0;
     }
 
-    int transaction_id = generate_transaction_id(sender, receiver);
+    int transaction_id = atoi(transaction_id_str);
 
     ASN1_INTEGER_set(transaction->TransactionID, transaction_id);
     ASN1_STRING_set(transaction->Subject, subject, strlen(subject));
@@ -201,7 +209,7 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
 
     char rsa_private_key_path[256];
     snprintf(rsa_private_key_path, sizeof(rsa_private_key_path),
-        "keys/rsa_private_%s.pem", sender->entity_name);
+        "keys/%d_priv.rsa", sender->entity_id);
 
     if (!sign_transaction_data(data_to_sign, data_to_sign_len,
         rsa_private_key_path,sender->password, &signature, &signature_len)) {
@@ -231,7 +239,7 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
     printf("\n");
 
     char output_filename[512];
-    snprintf(output_filename, sizeof(output_filename), "transactions/%s", transaction_name);
+    snprintf(output_filename, sizeof(output_filename), "transactions/%d_%d_%d.trx",sender->entity_id,receiver->entity_id, transaction_id);
 
     FILE* file = fopen(output_filename, "wb");
     if (!file) {

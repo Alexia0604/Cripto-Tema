@@ -21,7 +21,7 @@ void create_output_dirs();
 
 void log_action(const char* entity, const char* action)
 {
-    FILE* log_file = fopen("logs/activity.blob", "ab");
+    FILE* log_file = fopen("logs/info.log", "ab");
     if (!log_file) {
         fprintf(stderr, "Failed to open log file\n");
         return;
@@ -47,7 +47,7 @@ void log_action(const char* entity, const char* action)
 }
 
 void display_log() {
-    FILE* log_file = fopen("logs/activity.blob", "rb");
+    FILE* log_file = fopen("logs/info.log", "rb");
     if (!log_file) {
         printf("No log file found\n");
         return;
@@ -81,4 +81,6 @@ void create_output_dirs()
         fprintf(stderr, "Eroare creare director transactions: %s\n", strerror(errno));
     }
     printf("Directoarele au fost create in keys\n");
+
+    remove("logs/info.log");
 }

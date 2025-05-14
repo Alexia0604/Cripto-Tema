@@ -7,9 +7,11 @@
 #include <openssl/sha.h>
 #include "secure_profile.h"
 #include "file_operations.h"
-#include "utils.h"
 #include "logging.h"
 
+static int global_sym_counter = 0;
+static int last_entity1 = -1;
+static int last_entity2 = -1;
 
 int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, const char* password, EVP_PKEY** pkey, EVP_PKEY** peerkey);
 int generate_shared_secret(EVP_PKEY* pkey, EVP_PKEY* peerkey, unsigned char** skey, size_t* skeylen);
@@ -19,6 +21,27 @@ unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilena
 int generate_handshake(SecureProfile* entity1, SecureProfile* entity2);
 int aes_128_fancy_ofb_encrypt(unsigned char* plaintext, size_t plaintext_len, unsigned char* key, unsigned char* iv, unsigned char** ciphertext, size_t* ciphertext_len);
 int aes_128_fancy_ofb_decrypt(unsigned char* ciphertext, size_t ciphertext_len, unsigned char* key, unsigned char* iv, unsigned char** plaintext, size_t* plaintext_len);
+int get_sym_elements_id_for_transaction(int entity1_id, int entity2_id);
+
+
+int get_sym_elements_id_for_transaction(int entity1_id, int entity2_id) {
+    // Normalizează ordinea
+    int id1 = (entity1_id < entity2_id) ? entity1_id : entity2_id;
+    int id2 = (entity1_id < entity2_id) ? entity2_id : entity1_id;
+
+    // Verifică dacă ULTIMUL sym creat este între aceleași entități
+    if (last_entity1 == id1 && last_entity2 == id2 && global_sym_counter > 0) {
+        // Dacă da, returnăm același ID (nu incrementăm)
+        return global_sym_counter;
+    }
+    else {
+        // Dacă nu, creăm unul nou
+        global_sym_counter++;
+        last_entity1 = id1;
+        last_entity2 = id2;
+        return global_sym_counter;
+    }
+}
 
 int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, const char* password, EVP_PKEY** pkey, EVP_PKEY** peerkey)
 {
@@ -325,10 +348,10 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
     log_action(entity1->entity_name, log_msg);
 
     // Construiește căile fișierelor
-    snprintf(private_path_1, sizeof(private_path_1), "keys/%s_priv.ecc", entity1->entity_name);
-    snprintf(public_path_1, sizeof(public_path_1), "keys/%s_pub.ecc", entity1->entity_name);
-    snprintf(private_path_2, sizeof(private_path_2), "keys/%s_priv.ecc", entity2->entity_name);
-    snprintf(public_path_2, sizeof(public_path_2), "keys/%s_pub.ecc", entity2->entity_name);
+    snprintf(private_path_1, sizeof(private_path_1), "keys/%d_priv.ecc", entity1->entity_id);
+    snprintf(public_path_1, sizeof(public_path_1), "keys/%d_pub.ecc", entity1->entity_id);
+    snprintf(private_path_2, sizeof(private_path_2), "keys/%d_priv.ecc", entity2->entity_id);
+    snprintf(public_path_2, sizeof(public_path_2), "keys/%d_pub.ecc", entity2->entity_id);
 
     // Validează autenticitatea cheilor publice
     printf("Verifying authenticity of %s's public key...\n", entity2->entity_name);
@@ -390,7 +413,7 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
     printf("Handshake successful! Saving symmetric elements...\n");
 
     // Calculează ID-ul pentru SymElements (combinație unică)
-    int sym_elements_id = calculate_sym_elements_id(entity1->entity_id, entity2->entity_id);
+    int sym_elements_id = get_sym_elements_id_for_transaction(entity1->entity_id, entity2->entity_id);
 
     // Salvează elementele simetrice pentru comunicarea lor
     if (!save_sym_elements(symKey1, iv1, sym_elements_id)) {

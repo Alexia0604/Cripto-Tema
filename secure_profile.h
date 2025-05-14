@@ -108,8 +108,8 @@ int save_entity_keys(SecureProfile* entity)
 
     create_output_dirs();
 
-    snprintf(private_path, sizeof(private_path), "keys/%s_priv.ecc", entity->entity_name);
-    snprintf(public_path, sizeof(public_path), "keys/%s_pub.ecc", entity->entity_name);
+    snprintf(private_path, sizeof(private_path), "keys/%d_priv.ecc", entity->entity_id);
+    snprintf(public_path, sizeof(public_path), "keys/%d_pub.ecc", entity->entity_id);
 
     private_bio = BIO_new_file(private_path, "w");
     public_bio = BIO_new_file(public_path, "w");
@@ -146,8 +146,8 @@ int save_rsa_keys(SecureProfile* entity)
     BIO* public_bio = NULL;
     char private_path[256], public_path[256];
 
-    snprintf(private_path, sizeof(private_path), "keys/%s_priv.rsa", entity->entity_name);
-    snprintf(public_path, sizeof(public_path), "keys/%s_pub.rsa", entity->entity_name);
+    snprintf(private_path, sizeof(private_path), "keys/%d_priv.rsa", entity->entity_id);
+    snprintf(public_path, sizeof(public_path), "keys/%d_pub.rsa", entity->entity_id);
 
     private_bio = BIO_new_file(private_path, "w");
     public_bio = BIO_new_file(public_path, "w");
