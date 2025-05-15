@@ -16,15 +16,7 @@ typedef struct PubKeyMAC {
 } PubKeyMAC;
 
 
-ASN1_SEQUENCE(PubKeyMAC) = {
-    ASN1_SIMPLE(PubKeyMAC, PubKeyName, ASN1_PRINTABLESTRING),
-    ASN1_SIMPLE(PubKeyMAC, MACKey, ASN1_OCTET_STRING),
-    ASN1_SIMPLE(PubKeyMAC, MACValue, ASN1_OCTET_STRING)
-} ASN1_SEQUENCE_END(PubKeyMAC);
-
 DECLARE_ASN1_FUNCTIONS(PubKeyMAC);
-IMPLEMENT_ASN1_FUNCTIONS(PubKeyMAC);
-
 
 int compute_gmac(SecureProfile* entity);
 int validate_autenticity(SecureProfile* entity);

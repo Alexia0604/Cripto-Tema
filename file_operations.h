@@ -15,14 +15,8 @@ typedef struct SymElements {
     ASN1_OCTET_STRING* IV;
 } SymElements;
 
-ASN1_SEQUENCE(SymElements) = {
-    ASN1_SIMPLE(SymElements,SymElementsID,ASN1_INTEGER),
-    ASN1_SIMPLE(SymElements, SymKey,ASN1_OCTET_STRING),
-    ASN1_SIMPLE(SymElements, IV,ASN1_OCTET_STRING)
-} ASN1_SEQUENCE_END(SymElements);
 
 DECLARE_ASN1_FUNCTIONS(SymElements);
-IMPLEMENT_ASN1_FUNCTIONS(SymElements);
 
 
 int save_sym_elements(unsigned char* symKey, unsigned char* iv, int elementID);

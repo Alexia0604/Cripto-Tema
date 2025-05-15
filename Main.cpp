@@ -54,7 +54,7 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < input_data->num_entities; i++) {
         entities[i] = create_SecureProfile(
             input_data->entity_ids[i],
-            input_data->entity_passwords[i],  // Folosește parola din input
+            NULL,  // Folosește parola din input
             i + 1
         );
 
@@ -64,7 +64,6 @@ int main(int argc, char* argv[]) {
             // Cleanup
             for (int j = 0; j < i; j++) {
                 if (entities[j]->entity_name) free(entities[j]->entity_name);
-                if (entities[j]->password) free(entities[j]->password);
                 free(entities[j]);
             }
             free(entities);
@@ -74,7 +73,7 @@ int main(int argc, char* argv[]) {
 
         // Generează cheile EC
         printf("Generating EC key for %s...\n", entities[i]->entity_name);
-        if (!generate_entity_keys(entities[i])) {
+        if (!generate_entity_keys(entities[i],input_data->entity_passwords[i])) {
             fprintf(stderr, "EC key generation failed for entity: %s\n",
                 entities[i]->entity_name);
             // Cleanup complet
@@ -82,30 +81,10 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        entities[i]->public_key = entities[i]->private_key;
-
-        // Salvează cheile EC
-        printf("Saving EC keys for %s...\n", entities[i]->entity_name);
-        if (!save_entity_keys(entities[i])) {
-            fprintf(stderr, "Failed to save EC keys for entity: %s\n",
-                entities[i]->entity_name);
-            // Cleanup
-            return 1;
-        }
-
         // Generează cheile RSA
         printf("Generating RSA keys for %s...\n", entities[i]->entity_name);
-        if (!generate_rsa_keys(entities[i])) {
+        if (!generate_rsa_keys(entities[i],input_data->entity_passwords[i])) {
             fprintf(stderr, "RSA key generation failed for entity: %s\n",
-                entities[i]->entity_name);
-            // Cleanup
-            return 1;
-        }
-
-        // Salvează cheile RSA
-        printf("Saving RSA keys for %s...\n", entities[i]->entity_name);
-        if (!save_rsa_keys(entities[i])) {
-            fprintf(stderr, "Failed to save RSA keys for entity: %s\n",
                 entities[i]->entity_name);
             // Cleanup
             return 1;
@@ -212,9 +191,6 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < input_data->num_entities; i++) {
         if (entities[i]) {
             if (entities[i]->entity_name) free(entities[i]->entity_name);
-            if (entities[i]->password) free(entities[i]->password);
-            if (entities[i]->private_key) EVP_PKEY_free(entities[i]->private_key);
-            if (entities[i]->rsa_key) EVP_PKEY_free(entities[i]->rsa_key);
             if (entities[i]->gmac) free(entities[i]->gmac);
             free(entities[i]);
         }

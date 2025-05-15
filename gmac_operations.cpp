@@ -2,26 +2,47 @@
 
 #include "gmac_operations.h"
 
+ASN1_SEQUENCE(PubKeyMAC) = {
+    ASN1_SIMPLE(PubKeyMAC, PubKeyName, ASN1_PRINTABLESTRING),
+    ASN1_SIMPLE(PubKeyMAC, MACKey, ASN1_OCTET_STRING),
+    ASN1_SIMPLE(PubKeyMAC, MACValue, ASN1_OCTET_STRING)
+} ASN1_SEQUENCE_END(PubKeyMAC);
+
+IMPLEMENT_ASN1_FUNCTIONS(PubKeyMAC);
+
 int compute_gmac(SecureProfile* entity)
 {
     int ret = 0;
     unsigned char* pub_key_data = NULL;
     size_t pub_key_len = 0;
+    EVP_PKEY* temp_public_key = NULL;
+    char pub_key_path[256];
     unsigned char sym_key[32] = { 0 };
     time_t base_time = 1115240705; /* 05/05/2005 05:05:05 UTC */
     time_t diff_time = entity->generation_timestamp - base_time;
     char mac_path[256] = { 0 };
 
-    // Verifică dacă cheia publică este validă
-    if (!entity->public_key) {
-        fprintf(stderr, "Public key is NULL\n");
+    snprintf(pub_key_path, sizeof(pub_key_path), "keys/%d_pub.ecc", entity->entity_id);
+
+    BIO* pub_bio = BIO_new_file(pub_key_path, "r");
+    if (!pub_bio) {
+        fprintf(stderr, "Failed to open public key file\n");
+        return 0;
+    }
+
+    temp_public_key = PEM_read_bio_PUBKEY(pub_bio, NULL, NULL, NULL);
+    BIO_free(pub_bio);
+
+    if (!temp_public_key) {
+        fprintf(stderr, "Failed to read public key\n");
         return 0;
     }
 
     // Extrage cheia publică în format raw
-    pub_key_len = i2d_PUBKEY(entity->public_key, NULL);
+    pub_key_len = i2d_PUBKEY(temp_public_key, NULL);
     if (pub_key_len <= 0) {
         fprintf(stderr, "Failed to get public key length\n");
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
@@ -32,7 +53,7 @@ int compute_gmac(SecureProfile* entity)
     }
 
     unsigned char* pub_key_ptr = pub_key_data;
-    pub_key_len = i2d_PUBKEY(entity->public_key, &pub_key_ptr);
+    pub_key_len = i2d_PUBKEY(temp_public_key, &pub_key_ptr);
     if (pub_key_len <= 0) {
         fprintf(stderr, "Failed to get public key data\n");
         free(pub_key_data);
@@ -257,6 +278,8 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
+    EVP_PKEY_free(temp_public_key);
+    free(pub_key_data);
     BIO_free(mac_bio);
     free(der_buf);
 
@@ -546,21 +569,38 @@ int compute_gmac_rsa(SecureProfile* entity)
     int ret = 0;
     unsigned char* pub_key_data = NULL;
     size_t pub_key_len = 0;
+    EVP_PKEY* temp_rsa_public_key = NULL;
+    char pub_key_path[256];
     unsigned char sym_key[32] = { 0 };
     time_t base_time = 1115240705; /* 05/05/2005 05:05:05 UTC */
     time_t diff_time = entity->generation_timestamp - base_time;
     char mac_path[256] = { 0 };
 
-    // Verifică dacă cheia publică RSA este validă
-    if (!entity->rsa_key) {
-        fprintf(stderr, "RSA public key is NULL\n");
+    snprintf(pub_key_path, sizeof(pub_key_path), "keys/%d_pub.rsa", entity->entity_id);
+
+    BIO* pub_bio = BIO_new_file(pub_key_path, "r");
+    if (!pub_bio) {
+        fprintf(stderr, "Failed to open RSA public key file\n");
         return 0;
     }
 
+    RSA* rsa = PEM_read_bio_RSA_PUBKEY(pub_bio, NULL, NULL, NULL);
+    BIO_free(pub_bio);
+
+    if (!rsa) {
+        fprintf(stderr, "Failed to read RSA public key\n");
+        return 0;
+    }
+
+    temp_rsa_public_key = EVP_PKEY_new();
+    EVP_PKEY_assign_RSA(temp_rsa_public_key, rsa);
+
+
     // Extrage cheia publică RSA în format raw
-    pub_key_len = i2d_PUBKEY(entity->rsa_key, NULL);
+    pub_key_len = i2d_PUBKEY(temp_rsa_public_key, NULL);
     if (pub_key_len <= 0) {
         fprintf(stderr, "Failed to get RSA public key length\n");
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
@@ -571,7 +611,7 @@ int compute_gmac_rsa(SecureProfile* entity)
     }
 
     unsigned char* pub_key_ptr = pub_key_data;
-    pub_key_len = i2d_PUBKEY(entity->rsa_key, &pub_key_ptr);
+    pub_key_len = i2d_PUBKEY(temp_rsa_public_key, &pub_key_ptr);
     if (pub_key_len <= 0) {
         fprintf(stderr, "Failed to get RSA public key data\n");
         free(pub_key_data);
@@ -752,6 +792,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
+    EVP_PKEY_free(temp_rsa_public_key);
     BIO_free(mac_bio);
     free(der_buf);
     free(gmac_rsa);

@@ -22,19 +22,8 @@ typedef struct Transaction {
     ASN1_OCTET_STRING* TransactionSign;
 } Transaction;
 
-ASN1_SEQUENCE(Transaction) = {
-    ASN1_SIMPLE(Transaction,TransactionID,ASN1_INTEGER),
-    ASN1_SIMPLE(Transaction,Subject,ASN1_PRINTABLESTRING),
-    ASN1_SIMPLE(Transaction,SenderID,ASN1_INTEGER),
-    ASN1_SIMPLE(Transaction,ReceiverID,ASN1_INTEGER),
-    ASN1_SIMPLE(Transaction,SymElementsID,ASN1_INTEGER),
-    ASN1_SIMPLE(Transaction,EncryptedData,ASN1_OCTET_STRING),
-    ASN1_SIMPLE(Transaction,TransactionSign, ASN1_OCTET_STRING)
-} ASN1_SEQUENCE_END(Transaction);
 
 DECLARE_ASN1_FUNCTIONS(Transaction);
-IMPLEMENT_ASN1_FUNCTIONS(Transaction);
-
 
 int generate_transaction_id(SecureProfile* sender, SecureProfile* receiver);
 int sign_transaction_data(unsigned char* data, size_t data_len, const char* rsa_private_key_file, const char* password, unsigned char** signature, size_t* signature_len);

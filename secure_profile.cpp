@@ -7,11 +7,7 @@ SecureProfile* create_SecureProfile(const char* name, const char* password, int 
     if (!entity) return NULL;
 
     entity->entity_name = strdup(name);
-    entity->password = strdup(password);
     entity->entity_id = id;
-    entity->private_key = NULL;
-    entity->public_key = NULL;
-    entity->rsa_key = NULL;
     entity->gmac = NULL;
     entity->gmac_len = 0;
 
@@ -21,8 +17,9 @@ SecureProfile* create_SecureProfile(const char* name, const char* password, int 
     return entity;
 }
 
-int generate_entity_keys(SecureProfile* entity) {
+int generate_entity_keys(SecureProfile* entity, const char* password) {
     EVP_PKEY_CTX* ctx = NULL;
+    EVP_PKEY* temp_key = NULL;
     int ret = 0;
 
     ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_EC, NULL);
@@ -41,7 +38,7 @@ int generate_entity_keys(SecureProfile* entity) {
         goto cleanup;
     }
 
-    if (EVP_PKEY_keygen(ctx, &entity->private_key) <= 0) {
+    if (EVP_PKEY_keygen(ctx, &temp_key) <= 0) {
         fprintf(stderr, "Failed to generate key\n");
         log_action(entity->entity_name, "Failed to generate EC key pair");
         goto cleanup;
@@ -50,33 +47,63 @@ int generate_entity_keys(SecureProfile* entity) {
     printf("Generated key with curve NID_X9_62_prime256v1\n");
     log_action(entity->entity_name, "Generated EC key pair successfully");
 
+    // Salvează cheile imediat în fișiere
+    if (!save_ec_keys_to_files(entity, temp_key, password)) {
+        fprintf(stderr, "Failed to save EC keys\n");
+        goto cleanup;
+    }
+
     ret = 1;
+
 cleanup:
+    if (temp_key) EVP_PKEY_free(temp_key);
     if (ctx) EVP_PKEY_CTX_free(ctx);
     return ret;
 }
 
-int generate_rsa_keys(SecureProfile* entity)
-{
+int generate_rsa_keys(SecureProfile* entity, const char* password) {
     EVP_PKEY_CTX* ctx = NULL;
+    EVP_PKEY* temp_rsa_key = NULL;
+    int ret = 0;
 
     ctx = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, NULL);
+    if (!ctx) {
+        fprintf(stderr, "Failed to create RSA context\n");
+        goto cleanup;
+    }
 
-    EVP_PKEY_keygen_init(ctx);
+    if (EVP_PKEY_keygen_init(ctx) <= 0) {
+        fprintf(stderr, "Failed to initialize RSA context\n");
+        goto cleanup;
+    }
 
-    EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 3072);
+    if (EVP_PKEY_CTX_set_rsa_keygen_bits(ctx, 3072) <= 0) {
+        fprintf(stderr, "Failed to set RSA key size\n");
+        goto cleanup;
+    }
 
-    EVP_PKEY_keygen(ctx, &entity->rsa_key);
+    if (EVP_PKEY_keygen(ctx, &temp_rsa_key) <= 0) {
+        fprintf(stderr, "Failed to generate RSA key\n");
+        goto cleanup;
+    }
 
     log_action(entity->entity_name, "Generated RSA 3072-bit key pair");
 
-    EVP_PKEY_CTX_free(ctx);
+    // Salvează cheile RSA imediat în fișiere
+    if (!save_rsa_keys_to_files(entity, temp_rsa_key, password)) {
+        fprintf(stderr, "Failed to save RSA keys\n");
+        goto cleanup;
+    }
 
-    return 1;
+    ret = 1;
+
+cleanup:
+    if (temp_rsa_key) EVP_PKEY_free(temp_rsa_key);
+    if (ctx) EVP_PKEY_CTX_free(ctx);
+    return ret;
 }
 
-int save_entity_keys(SecureProfile* entity)
-{
+int save_ec_keys_to_files(SecureProfile* entity, EVP_PKEY* temp_key, const char* password) {
     BIO* private_bio = NULL;
     BIO* public_bio = NULL;
     char private_path[256], public_path[256];
@@ -95,13 +122,14 @@ int save_entity_keys(SecureProfile* entity)
         goto cleanup;
     }
 
-    if (!PEM_write_bio_PrivateKey(private_bio, entity->private_key, EVP_aes_256_cbc(), (unsigned char*)entity->password, strlen(entity->password), NULL, NULL)) {
+    if (!PEM_write_bio_PrivateKey(private_bio, temp_key, EVP_aes_256_cbc(),
+        (unsigned char*)password, strlen(password), NULL, NULL)) {
         fprintf(stderr, "Failed to save private key\n");
         log_action(entity->entity_name, "Failed to save private key");
         goto cleanup;
     }
 
-    if (!PEM_write_bio_PUBKEY(public_bio, entity->private_key)) {
+    if (!PEM_write_bio_PUBKEY(public_bio, temp_key)) {
         fprintf(stderr, "Failed to save public key!\n");
         log_action(entity->entity_name, "Failed to save public key");
         goto cleanup;
@@ -116,11 +144,11 @@ cleanup:
     return ret;
 }
 
-int save_rsa_keys(SecureProfile* entity)
-{
+int save_rsa_keys_to_files(SecureProfile* entity, EVP_PKEY* temp_rsa_key, const char* password) {
     BIO* private_bio = NULL;
     BIO* public_bio = NULL;
     char private_path[256], public_path[256];
+    int ret = 0;
 
     snprintf(private_path, sizeof(private_path), "keys/%d_priv.rsa", entity->entity_id);
     snprintf(public_path, sizeof(public_path), "keys/%d_pub.rsa", entity->entity_id);
@@ -128,36 +156,38 @@ int save_rsa_keys(SecureProfile* entity)
     private_bio = BIO_new_file(private_path, "w");
     public_bio = BIO_new_file(public_path, "w");
 
-    if (!private_bio || !public_bio)
-    {
+    if (!private_bio || !public_bio) {
         fprintf(stderr, "Failed to open BIO files for RSA keys\n");
+        goto cleanup;
     }
 
-    RSA* rsa = EVP_PKEY_get1_RSA(entity->rsa_key);
+    RSA* rsa = EVP_PKEY_get1_RSA(temp_rsa_key);
     if (!rsa) {
         fprintf(stderr, "Failed to extract RSA key\n");
+        goto cleanup;
     }
 
-    // Salvează cheia privată RSA în format PKCS#1 cu parolă
     if (!PEM_write_bio_RSAPrivateKey(private_bio, rsa, EVP_aes_256_cbc(),
-        (unsigned char*)entity->password, strlen(entity->password), NULL, NULL)) {
+        (unsigned char*)password, strlen(password), NULL, NULL)) {
         fprintf(stderr, "Failed to save RSA private key\n");
         log_action(entity->entity_name, "Failed to save RSA private key");
         RSA_free(rsa);
+        goto cleanup;
     }
 
-    // Salvează cheia publică RSA
     if (!PEM_write_bio_RSA_PUBKEY(public_bio, rsa)) {
         fprintf(stderr, "Failed to save RSA public key\n");
         log_action(entity->entity_name, "Failed to save RSA public key");
         RSA_free(rsa);
+        goto cleanup;
     }
 
     RSA_free(rsa);
     log_action(entity->entity_name, "Saved RSA key pair in PKCS#1 format");
+    ret = 1;
 
-    BIO_free(private_bio);
-    BIO_free(public_bio);
-
-    return 1;
+cleanup:
+    if (private_bio) BIO_free(private_bio);
+    if (public_bio) BIO_free(public_bio);
+    return ret;
 }

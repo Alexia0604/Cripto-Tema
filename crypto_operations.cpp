@@ -1,6 +1,7 @@
 ﻿#pragma warning(disable:4996) 
 
 #include "crypto_operations.h"
+#include "gmac_operations.h"
 
 int get_sym_elements_id_for_transaction(int entity1_id, int entity2_id) {
     // Normalizează ordinea
@@ -318,7 +319,7 @@ unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilena
     return symKey;
 }
 
-int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
+int generate_handshake(SecureProfile* entity1, SecureProfile* entity2, const char* password1, const char* password2)
 {
     char private_path_1[256], public_path_1[256];
     char private_path_2[256], public_path_2[256];
@@ -362,7 +363,7 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
 
     // Schimb de chei ECDH - entity1
     printf("%s switches keys with %s...\n", entity1->entity_name, entity2->entity_name);
-    symKey1 = ecdh(private_path_1, public_path_2, entity1->password, NULL, &symRightUnused1, &symRightUnusedLength1, &iv1);
+    symKey1 = ecdh(private_path_1, public_path_2, password1, NULL, &symRightUnused1, &symRightUnusedLength1, &iv1);
     if (!symKey1)
     {
         fprintf(stderr, "ECDH failed for %s\n", entity1->entity_name);
@@ -373,7 +374,7 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
 
     // Schimb de chei ECDH - entity2
     printf("%s switches keys with %s...\n", entity2->entity_name, entity1->entity_name);
-    symKey2 = ecdh(private_path_2, public_path_1, entity2->password, NULL, &symRightUnused2, &symRightUnusedLength2, &iv2);
+    symKey2 = ecdh(private_path_2, public_path_1, password2, NULL, &symRightUnused2, &symRightUnusedLength2, &iv2);
     if (!symKey2)
     {
         fprintf(stderr, "ECDH failed for %s\n", entity2->entity_name);
