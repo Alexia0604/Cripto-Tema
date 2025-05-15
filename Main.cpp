@@ -140,7 +140,24 @@ int main(int argc, char* argv[]) {
             printf("No handshake found between %s and %s, performing handshake...\n",
                 sender->entity_name, receiver->entity_name);
 
-            if (!generate_handshake(sender, receiver)) {
+            char* password1 = NULL;
+            char* password2 = NULL;
+
+            for (int j = 0; j < input_data->num_entities; j++) {
+                if (strcmp(input_data->entity_ids[j], sender->entity_name) == 0) {
+                    password1 = input_data->entity_passwords[j];
+                }
+                if (strcmp(input_data->entity_ids[j], receiver->entity_name) == 0) {
+                    password2 = input_data->entity_passwords[j];
+                }
+            }
+
+            if (!password1 || !password2) {
+                fprintf(stderr, "Failed to find passwords for handshake\n");
+                continue;
+            }
+
+            if (!generate_handshake(sender, receiver,password1,password2)) {
                 fprintf(stderr, "Handshake failed between %s and %s!\n",
                     sender->entity_name, receiver->entity_name);
                 continue;
