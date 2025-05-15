@@ -49,6 +49,7 @@ int compute_gmac(SecureProfile* entity)
     pub_key_data = (unsigned char*)malloc(pub_key_len);
     if (!pub_key_data) {
         fprintf(stderr, "Failed to allocate memory for public key data\n");
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
@@ -57,6 +58,7 @@ int compute_gmac(SecureProfile* entity)
     if (pub_key_len <= 0) {
         fprintf(stderr, "Failed to get public key data\n");
         free(pub_key_data);
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
@@ -65,6 +67,7 @@ int compute_gmac(SecureProfile* entity)
         1000, EVP_sha3_256(), 32, sym_key) <= 0) {
         fprintf(stderr, "Failed to derive symmetric key\n");
         free(pub_key_data);
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
@@ -73,6 +76,7 @@ int compute_gmac(SecureProfile* entity)
     if (!gmac_ctx) {
         fprintf(stderr, "Failed to create GMAC context\n");
         free(pub_key_data);
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
@@ -81,6 +85,7 @@ int compute_gmac(SecureProfile* entity)
         fprintf(stderr, "Failed to initialize GMAC cipher\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
@@ -89,6 +94,7 @@ int compute_gmac(SecureProfile* entity)
         fprintf(stderr, "Failed to set IV length\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
@@ -100,6 +106,7 @@ int compute_gmac(SecureProfile* entity)
         fprintf(stderr, "Failed to set key and IV\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
@@ -109,6 +116,7 @@ int compute_gmac(SecureProfile* entity)
         fprintf(stderr, "Failed to process AAD\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
@@ -117,6 +125,7 @@ int compute_gmac(SecureProfile* entity)
         fprintf(stderr, "Failed to finalize GMAC\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
@@ -127,6 +136,7 @@ int compute_gmac(SecureProfile* entity)
         fprintf(stderr, "Failed to allocate memory for GMAC\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
@@ -136,13 +146,14 @@ int compute_gmac(SecureProfile* entity)
         EVP_CIPHER_CTX_free(gmac_ctx);
         free(entity->gmac);
         entity->gmac = NULL;
+        EVP_PKEY_free(temp_public_key);
         return 0;
     }
 
     // Eliberez contexte
     EVP_CIPHER_CTX_free(gmac_ctx);
-    free(pub_key_data);
-
+    EVP_PKEY_free(temp_public_key);
+    // NU MAI ELIBERĂM pub_key_data AICI - îl vom elibera la final
 
     // Creează structura PubKeyMAC
     PubKeyMAC* pub_key_mac = PubKeyMAC_new();
@@ -150,6 +161,7 @@ int compute_gmac(SecureProfile* entity)
         fprintf(stderr, "Failed to create PubKeyMAC\n");
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
@@ -159,6 +171,7 @@ int compute_gmac(SecureProfile* entity)
         PubKeyMAC_free(pub_key_mac);
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
@@ -169,6 +182,7 @@ int compute_gmac(SecureProfile* entity)
         PubKeyMAC_free(pub_key_mac);
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
@@ -180,6 +194,7 @@ int compute_gmac(SecureProfile* entity)
         PubKeyMAC_free(pub_key_mac);
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
@@ -191,6 +206,7 @@ int compute_gmac(SecureProfile* entity)
         PubKeyMAC_free(pub_key_mac);
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
@@ -202,6 +218,7 @@ int compute_gmac(SecureProfile* entity)
         PubKeyMAC_free(pub_key_mac);
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
@@ -213,6 +230,7 @@ int compute_gmac(SecureProfile* entity)
         PubKeyMAC_free(pub_key_mac);
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
@@ -226,6 +244,7 @@ int compute_gmac(SecureProfile* entity)
         PubKeyMAC_free(pub_key_mac);
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
@@ -238,6 +257,7 @@ int compute_gmac(SecureProfile* entity)
         PubKeyMAC_free(pub_key_mac);
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
@@ -252,6 +272,7 @@ int compute_gmac(SecureProfile* entity)
         PubKeyMAC_free(pub_key_mac);
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
@@ -266,6 +287,7 @@ int compute_gmac(SecureProfile* entity)
         free(der_buf);
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
@@ -275,13 +297,13 @@ int compute_gmac(SecureProfile* entity)
         free(der_buf);
         free(entity->gmac);
         entity->gmac = NULL;
+        free(pub_key_data);
         return 0;
     }
 
-    EVP_PKEY_free(temp_public_key);
-    free(pub_key_data);
     BIO_free(mac_bio);
     free(der_buf);
+    free(pub_key_data);  // ELIBERARE SINGURĂ LA FINAL
 
     log_action(entity->entity_name, "Computed and saved GMAC for public key");
 
@@ -595,7 +617,6 @@ int compute_gmac_rsa(SecureProfile* entity)
     temp_rsa_public_key = EVP_PKEY_new();
     EVP_PKEY_assign_RSA(temp_rsa_public_key, rsa);
 
-
     // Extrage cheia publică RSA în format raw
     pub_key_len = i2d_PUBKEY(temp_rsa_public_key, NULL);
     if (pub_key_len <= 0) {
@@ -607,6 +628,7 @@ int compute_gmac_rsa(SecureProfile* entity)
     pub_key_data = (unsigned char*)malloc(pub_key_len);
     if (!pub_key_data) {
         fprintf(stderr, "Failed to allocate memory for RSA public key data\n");
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
@@ -615,6 +637,7 @@ int compute_gmac_rsa(SecureProfile* entity)
     if (pub_key_len <= 0) {
         fprintf(stderr, "Failed to get RSA public key data\n");
         free(pub_key_data);
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
@@ -623,6 +646,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         1000, EVP_sha3_256(), 32, sym_key) <= 0) {
         fprintf(stderr, "Failed to derive symmetric key for RSA\n");
         free(pub_key_data);
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
@@ -631,6 +655,7 @@ int compute_gmac_rsa(SecureProfile* entity)
     if (!gmac_ctx) {
         fprintf(stderr, "Failed to create GMAC context for RSA\n");
         free(pub_key_data);
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
@@ -639,6 +664,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to initialize GMAC cipher for RSA\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
@@ -647,6 +673,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to set IV length for RSA\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
@@ -658,6 +685,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to set key and IV for RSA\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
@@ -667,6 +695,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to process AAD for RSA\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
@@ -675,6 +704,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to finalize GMAC for RSA\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
@@ -685,6 +715,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to allocate memory for RSA GMAC\n");
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
@@ -693,18 +724,21 @@ int compute_gmac_rsa(SecureProfile* entity)
         free(pub_key_data);
         EVP_CIPHER_CTX_free(gmac_ctx);
         free(gmac_rsa);
+        EVP_PKEY_free(temp_rsa_public_key);
         return 0;
     }
 
     // Eliberez contexte
     EVP_CIPHER_CTX_free(gmac_ctx);
-    free(pub_key_data);
+    EVP_PKEY_free(temp_rsa_public_key);
+    // NU MAI ELIBERĂM pub_key_data AICI - îl vom elibera la final
 
     // Creează structura PubKeyMAC pentru RSA
     PubKeyMAC* pub_key_mac = PubKeyMAC_new();
     if (!pub_key_mac) {
         fprintf(stderr, "Failed to create PubKeyMAC for RSA\n");
         free(gmac_rsa);
+        free(pub_key_data);
         return 0;
     }
 
@@ -716,6 +750,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to create PubKeyMAC fields for RSA\n");
         PubKeyMAC_free(pub_key_mac);
         free(gmac_rsa);
+        free(pub_key_data);
         return 0;
     }
 
@@ -727,6 +762,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to set PubKeyName for RSA\n");
         PubKeyMAC_free(pub_key_mac);
         free(gmac_rsa);
+        free(pub_key_data);
         return 0;
     }
 
@@ -734,6 +770,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to set MACKey for RSA\n");
         PubKeyMAC_free(pub_key_mac);
         free(gmac_rsa);
+        free(pub_key_data);
         return 0;
     }
 
@@ -741,6 +778,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to set MACValue for RSA\n");
         PubKeyMAC_free(pub_key_mac);
         free(gmac_rsa);
+        free(pub_key_data);
         return 0;
     }
 
@@ -750,6 +788,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to get DER length for RSA\n");
         PubKeyMAC_free(pub_key_mac);
         free(gmac_rsa);
+        free(pub_key_data);
         return 0;
     }
 
@@ -758,6 +797,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to allocate memory for DER buffer RSA\n");
         PubKeyMAC_free(pub_key_mac);
         free(gmac_rsa);
+        free(pub_key_data);
         return 0;
     }
 
@@ -768,6 +808,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         free(der_buf);
         PubKeyMAC_free(pub_key_mac);
         free(gmac_rsa);
+        free(pub_key_data);
         return 0;
     }
 
@@ -781,6 +822,7 @@ int compute_gmac_rsa(SecureProfile* entity)
         fprintf(stderr, "Failed to open mac file for RSA\n");
         free(der_buf);
         free(gmac_rsa);
+        free(pub_key_data);
         return 0;
     }
 
@@ -789,13 +831,14 @@ int compute_gmac_rsa(SecureProfile* entity)
         BIO_free(mac_bio);
         free(der_buf);
         free(gmac_rsa);
+        free(pub_key_data);
         return 0;
     }
 
-    EVP_PKEY_free(temp_rsa_public_key);
     BIO_free(mac_bio);
     free(der_buf);
     free(gmac_rsa);
+    free(pub_key_data);  // ELIBERARE SINGURĂ LA FINAL
 
     log_action(entity->entity_name, "Computed and saved GMAC for RSA public key");
 
