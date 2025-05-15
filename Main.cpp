@@ -14,7 +14,6 @@
 #include "transaction.h"
 
 
-
 // Funcție ajutătoare pentru a găsi o entitate după ID
 SecureProfile* find_entity_by_id(SecureProfile** entities, int num_entities, const char* id) {
     for (int i = 0; i < num_entities; i++) {
@@ -107,6 +106,14 @@ int main(int argc, char* argv[]) {
         printf("Saving RSA keys for %s...\n", entities[i]->entity_name);
         if (!save_rsa_keys(entities[i])) {
             fprintf(stderr, "Failed to save RSA keys for entity: %s\n",
+                entities[i]->entity_name);
+            // Cleanup
+            return 1;
+        }
+
+        printf("Computing GMAC for RSA key of %s...\n", entities[i]->entity_name);
+        if (!compute_gmac_rsa(entities[i])) {
+            fprintf(stderr, "RSA GMAC computation failed for entity: %s\n",
                 entities[i]->entity_name);
             // Cleanup
             return 1;
