@@ -319,7 +319,7 @@ unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilena
     return symKey;
 }
 
-int generate_handshake(SecureProfile* entity1, SecureProfile* entity2, const char* password1, const char* password2)
+int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
 {
     char private_path_1[256], public_path_1[256];
     char private_path_2[256], public_path_2[256];
@@ -361,9 +361,28 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2, const cha
         return 0;
     }
 
+    // MODIFICARE: Nu mai primești parole ca parametri, trebuie să le obții de undeva
+    // Pentru moment, citim de la utilizator în loc să le păstrăm în memorie
+    char password1[256] = { 0 };
+    char password2[256] = { 0 };
+
+    // Aici ar trebui să obții parolele dintr-o sursă securizată
+    // Pentru exemplu, presupunem că le citești de la utilizator
+    printf("Enter password for %s: ", entity1->entity_name);
+    fgets(password1, sizeof(password1), stdin);
+    password1[strcspn(password1, "\n")] = 0;
+
+    printf("Enter password for %s: ", entity2->entity_name);
+    fgets(password2, sizeof(password2), stdin);
+    password2[strcspn(password2, "\n")] = 0;
+
     // Schimb de chei ECDH - entity1
     printf("%s switches keys with %s...\n", entity1->entity_name, entity2->entity_name);
     symKey1 = ecdh(private_path_1, public_path_2, password1, NULL, &symRightUnused1, &symRightUnusedLength1, &iv1);
+
+    // Șterge parola din memorie imediat după utilizare
+    memset(password1, 0, sizeof(password1));
+
     if (!symKey1)
     {
         fprintf(stderr, "ECDH failed for %s\n", entity1->entity_name);
@@ -375,6 +394,10 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2, const cha
     // Schimb de chei ECDH - entity2
     printf("%s switches keys with %s...\n", entity2->entity_name, entity1->entity_name);
     symKey2 = ecdh(private_path_2, public_path_1, password2, NULL, &symRightUnused2, &symRightUnusedLength2, &iv2);
+
+    // Șterge parola din memorie imediat după utilizare
+    memset(password2, 0, sizeof(password2));
+
     if (!symKey2)
     {
         fprintf(stderr, "ECDH failed for %s\n", entity2->entity_name);

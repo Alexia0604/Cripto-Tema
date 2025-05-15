@@ -157,9 +157,23 @@ int main(int argc, char* argv[]) {
         snprintf(transaction_filename, sizeof(transaction_filename),
             "%d_%d_%s.trx", sender->entity_id, receiver->entity_id, tr->transaction_id);
 
+        // Găsește parola pentru sender din input_data
+        char* sender_password = NULL;
+        for (int j = 0; j < input_data->num_entities; j++) {
+            if (strcmp(input_data->entity_ids[j], tr->sender_id) == 0) {
+                sender_password = input_data->entity_passwords[j];
+                break;
+            }
+        }
+
+        if (!sender_password) {
+            fprintf(stderr, "Failed to find password for sender %s\n", tr->sender_id);
+            continue;
+        }
+
         // Creează tranzacția
         if (create_transaction(sender, receiver, tr->subject,
-            tr->message, tr->transaction_id, transaction_filename)) {
+            tr->message, tr->transaction_id, transaction_filename, sender_password)) {
             printf("Transaction %s created successfully!\n", tr->transaction_id);
 
             // Verifică tranzacția
@@ -183,7 +197,6 @@ int main(int argc, char* argv[]) {
                 tr->transaction_id);
         }
     }
-
     printf("\n=== All operations completed! ===\n");
     log_action("System", "Application completed successfully");
 

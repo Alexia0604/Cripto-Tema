@@ -110,7 +110,9 @@ int sign_transaction_data(unsigned char* data, size_t data_len, const char* rsa_
     return ret;
 }
 
-int create_transaction(SecureProfile* sender, SecureProfile* receiver, const char* subject, const char* message, const char* transaction_id_str, const char* transaction_name) {
+int create_transaction(SecureProfile* sender, SecureProfile* receiver, const char* subject,
+    const char* message, const char* transaction_id_str, const char* transaction_name,
+    const char* sender_password) {  // Adaugă parametrul
     Transaction* transaction = NULL;
     unsigned char* symKey = NULL;
     unsigned char* iv = NULL;
@@ -120,7 +122,6 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
     size_t signature_len = 0;
     unsigned char* der_buf = NULL;
     int der_len = 0;
-    BIO* file_bio = NULL;
     int ret = 0;
 
     char log_msg[256];
@@ -184,8 +185,9 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
     snprintf(rsa_private_key_path, sizeof(rsa_private_key_path),
         "keys/%d_priv.rsa", sender->entity_id);
 
+    // Folosim parola primită ca parametru
     if (!sign_transaction_data(data_to_sign, data_to_sign_len,
-        rsa_private_key_path, sender->password, &signature, &signature_len)) {
+        rsa_private_key_path, sender_password, &signature, &signature_len)) {
         fprintf(stderr, "Failed to sign transaction\n");
         Transaction_free(transaction);
         free(symKey);
@@ -198,10 +200,13 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
     ASN1_STRING_set(transaction->TransactionSign, signature, signature_len);
 
     der_len = i2d_Transaction(transaction, NULL);
-    printf("DEBUG: DER length calculated: %d\n", der_len);
     der_buf = (unsigned char*)malloc(der_len);
+
+    // Declară der_ptr aici
     unsigned char* der_ptr = der_buf;
     der_len = i2d_Transaction(transaction, &der_ptr);
+
+    printf("DEBUG: DER length calculated: %d\n", der_len);
     printf("DEBUG: DER actually encoded: %d bytes\n", der_len);
 
     // Debug - afișează primii bytes
@@ -212,7 +217,8 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
     printf("\n");
 
     char output_filename[512];
-    snprintf(output_filename, sizeof(output_filename), "transactions/%d_%d_%d.trx", sender->entity_id, receiver->entity_id, transaction_id);
+    snprintf(output_filename, sizeof(output_filename), "transactions/%d_%d_%d.trx",
+        sender->entity_id, receiver->entity_id, transaction_id);
 
     FILE* file = fopen(output_filename, "wb");
     if (!file) {
@@ -249,10 +255,6 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
     printf("Subject: %s\n", subject);
     printf("Saved to: %s\n", output_filename);
 
-    ret = 1;
-
-    printf("DEBUG: Wrote %zu bytes to %s\n", written, output_filename);
-
     fclose(file);
     Transaction_free(transaction);
     free(symKey);
@@ -266,7 +268,7 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
         transaction_id, receiver->entity_name);
     log_action(sender->entity_name, log_msg);
 
-    return ret;
+    return 1;
 }
 
 int verify_and_read_transaction(const char* transaction_name, const char* rsa_public_key_file) {

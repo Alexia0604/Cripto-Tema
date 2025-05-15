@@ -148,6 +148,7 @@ int save_rsa_keys_to_files(SecureProfile* entity, EVP_PKEY* temp_rsa_key, const 
     BIO* private_bio = NULL;
     BIO* public_bio = NULL;
     char private_path[256], public_path[256];
+    RSA* rsa = NULL;
     int ret = 0;
 
     snprintf(private_path, sizeof(private_path), "keys/%d_priv.rsa", entity->entity_id);
@@ -158,13 +159,17 @@ int save_rsa_keys_to_files(SecureProfile* entity, EVP_PKEY* temp_rsa_key, const 
 
     if (!private_bio || !public_bio) {
         fprintf(stderr, "Failed to open BIO files for RSA keys\n");
-        goto cleanup;
+        if (private_bio) BIO_free(private_bio);
+        if (public_bio) BIO_free(public_bio);
+        return 0;
     }
 
-    RSA* rsa = EVP_PKEY_get1_RSA(temp_rsa_key);
+    rsa = EVP_PKEY_get1_RSA(temp_rsa_key);
     if (!rsa) {
         fprintf(stderr, "Failed to extract RSA key\n");
-        goto cleanup;
+        BIO_free(private_bio);
+        BIO_free(public_bio);
+        return 0;
     }
 
     if (!PEM_write_bio_RSAPrivateKey(private_bio, rsa, EVP_aes_256_cbc(),
@@ -172,22 +177,25 @@ int save_rsa_keys_to_files(SecureProfile* entity, EVP_PKEY* temp_rsa_key, const 
         fprintf(stderr, "Failed to save RSA private key\n");
         log_action(entity->entity_name, "Failed to save RSA private key");
         RSA_free(rsa);
-        goto cleanup;
+        BIO_free(private_bio);
+        BIO_free(public_bio);
+        return 0;
     }
 
     if (!PEM_write_bio_RSA_PUBKEY(public_bio, rsa)) {
         fprintf(stderr, "Failed to save RSA public key\n");
         log_action(entity->entity_name, "Failed to save RSA public key");
         RSA_free(rsa);
-        goto cleanup;
+        BIO_free(private_bio);
+        BIO_free(public_bio);
+        return 0;
     }
 
     RSA_free(rsa);
-    log_action(entity->entity_name, "Saved RSA key pair in PKCS#1 format");
-    ret = 1;
+    BIO_free(private_bio);
+    BIO_free(public_bio);
 
-cleanup:
-    if (private_bio) BIO_free(private_bio);
-    if (public_bio) BIO_free(public_bio);
-    return ret;
+    log_action(entity->entity_name, "Saved RSA key pair in PKCS#1 format");
+
+    return 1;
 }
