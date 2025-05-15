@@ -16,16 +16,14 @@ InputData* parse_input_file(const char* filename) {
     }
     data->num_entities = 15;
     
-    // Citește numărul de entități
-    if (fscanf(file, "%d", &data->num_entities) != 1) {
-        printf("\nales: %d\n", &data->num_entities);
+    if (fscanf(file, "%d", &data->num_entities) != 1) 
+    {
         fprintf(stderr, "Failed to read number of entities\n");
         fclose(file);
         free(data);
         return NULL;
     }
 
-    // Alocă memorie pentru ID-urile și parolele entităților
     data->entity_ids = (char**)malloc(data->num_entities * sizeof(char*));
     data->entity_passwords = (char**)malloc(data->num_entities * sizeof(char*));
 
@@ -38,13 +36,11 @@ InputData* parse_input_file(const char* filename) {
     }
 
     char line[1024];
-    fgets(line, sizeof(line), file); // Consumă newline-ul după numărul de entități
+    fgets(line, sizeof(line), file);
 
-    // Citește ID-urile și parolele entităților (pe linii separate)
     for (int i = 0; i < data->num_entities; i++) {
         if (!fgets(line, sizeof(line), file)) {
             fprintf(stderr, "Failed to read entity %d\n", i);
-            // Cleanup
             for (int j = 0; j < i; j++) {
                 free(data->entity_ids[j]);
                 free(data->entity_passwords[j]);
@@ -56,16 +52,13 @@ InputData* parse_input_file(const char* filename) {
             return NULL;
         }
 
-        // Elimină newline-ul de la sfârșitul liniei
         line[strcspn(line, "\n")] = 0;
 
-        // Parsează ID și parola de pe aceeași linie, separate prin spațiu
         char* id = strtok(line, " ");
         char* pass = strtok(NULL, " ");
 
         if (!id || !pass) {
             fprintf(stderr, "Invalid entity format at line %d. Expected: id password\n", i);
-            // Cleanup
             for (int j = 0; j < i; j++) {
                 free(data->entity_ids[j]);
                 free(data->entity_passwords[j]);
@@ -81,10 +74,8 @@ InputData* parse_input_file(const char* filename) {
         data->entity_passwords[i] = strdup(pass);
 
         if (!data->entity_ids[i] || !data->entity_passwords[i]) {
-            // Eroare de alocare
             if (data->entity_ids[i]) free(data->entity_ids[i]);
             if (data->entity_passwords[i]) free(data->entity_passwords[i]);
-            // Cleanup complet
             for (int j = 0; j < i; j++) {
                 free(data->entity_ids[j]);
                 free(data->entity_passwords[j]);
@@ -97,10 +88,8 @@ InputData* parse_input_file(const char* filename) {
         }
     }
 
-    // Citește numărul de tranzacții
     if (fscanf(file, "%d", &data->num_transactions) != 1) {
         fprintf(stderr, "Failed to read number of transactions\n");
-        // Cleanup
         for (int i = 0; i < data->num_entities; i++) {
             free(data->entity_ids[i]);
             free(data->entity_passwords[i]);
@@ -112,11 +101,9 @@ InputData* parse_input_file(const char* filename) {
         return NULL;
     }
 
-    // Alocă memorie pentru tranzacții
     data->transactions = (TransactionInput*)malloc(
         data->num_transactions * sizeof(TransactionInput));
     if (!data->transactions) {
-        // Cleanup
         for (int i = 0; i < data->num_entities; i++) {
             free(data->entity_ids[i]);
             free(data->entity_passwords[i]);
@@ -128,13 +115,12 @@ InputData* parse_input_file(const char* filename) {
         return NULL;
     }
 
-    fgets(line, sizeof(line), file); // Consumă newline-ul după numărul de tranzacții
+    fgets(line, sizeof(line), file); 
 
-    // Citește fiecare tranzacție
     for (int i = 0; i < data->num_transactions; i++) {
         if (!fgets(line, sizeof(line), file)) {
             fprintf(stderr, "Failed to read transaction %d\n", i);
-            // Cleanup complet
+
             for (int j = 0; j < i; j++) {
                 free(data->transactions[j].transaction_id);
                 free(data->transactions[j].sender_id);
@@ -154,10 +140,8 @@ InputData* parse_input_file(const char* filename) {
             return NULL;
         }
 
-        // Elimină newline-ul
         line[strcspn(line, "\n")] = 0;
 
-        // Parsează tranzacția (format: id_tranzacție/id_sursă/id_destinație/subiect/mesaj)
         char line_for_parsing[1024];
         strncpy(line_for_parsing, line, sizeof(line_for_parsing) - 1);
         line_for_parsing[sizeof(line_for_parsing) - 1] = '\0';
@@ -166,12 +150,11 @@ InputData* parse_input_file(const char* filename) {
         char* sender = strtok(NULL, "/");
         char* receiver = strtok(NULL, "/");
         char* subject = strtok(NULL, "/");
-        char* message = strtok(NULL, "");  // Restul liniei este mesajul (poate conține /)
+        char* message = strtok(NULL, "");
 
         if (!tr_id || !sender || !receiver || !subject || !message) {
             fprintf(stderr, "Invalid transaction format at line %d\n", i);
             fprintf(stderr, "Expected: id/sender/receiver/subject/message\n");
-            // Cleanup complet
             for (int j = 0; j < i; j++) {
                 free(data->transactions[j].transaction_id);
                 free(data->transactions[j].sender_id);
@@ -191,7 +174,6 @@ InputData* parse_input_file(const char* filename) {
             return NULL;
         }
 
-        // Alocă și copiază stringurile
         data->transactions[i].transaction_id = strdup(tr_id);
         data->transactions[i].sender_id = strdup(sender);
         data->transactions[i].receiver_id = strdup(receiver);
@@ -203,7 +185,6 @@ InputData* parse_input_file(const char* filename) {
             !data->transactions[i].receiver_id ||
             !data->transactions[i].subject ||
             !data->transactions[i].message) {
-            // Eroare de alocare - cleanup
             if (data->transactions[i].transaction_id) free(data->transactions[i].transaction_id);
             if (data->transactions[i].sender_id) free(data->transactions[i].sender_id);
             if (data->transactions[i].receiver_id) free(data->transactions[i].receiver_id);
@@ -236,7 +217,6 @@ InputData* parse_input_file(const char* filename) {
 
 void free_input_data(InputData* data) {
     if (data) {
-        // Eliberează tranzacțiile
         for (int i = 0; i < data->num_transactions; i++) {
             free(data->transactions[i].transaction_id);
             free(data->transactions[i].sender_id);
@@ -246,7 +226,6 @@ void free_input_data(InputData* data) {
         }
         free(data->transactions);
 
-        // Eliberează ID-urile și parolele entităților
         for (int i = 0; i < data->num_entities; i++) {
             free(data->entity_ids[i]);
             free(data->entity_passwords[i]);

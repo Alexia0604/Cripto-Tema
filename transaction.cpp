@@ -18,7 +18,6 @@ int generate_transaction_id(SecureProfile* sender, SecureProfile* receiver) {
     time_t now = time(NULL);
     struct tm* tm_info = localtime(&now);
 
-    // Formă mai simplă pentru a evita overflow-ul
     int hour_min = tm_info->tm_hour * 60 + tm_info->tm_min;
     int transaction_id = (hour_min * 1000) +
         (sender->entity_id * 10) +
@@ -48,7 +47,6 @@ int sign_transaction_data(unsigned char* data, size_t data_len, const char* rsa_
         return 0;
     }
 
-    // Convertește RSA în EVP_PKEY pentru semnare
     rsa_key = EVP_PKEY_new();
     if (!rsa_key || EVP_PKEY_assign_RSA(rsa_key, rsa) != 1) {
         fprintf(stderr, "Failed to convert RSA to EVP_PKEY\n");
@@ -110,9 +108,7 @@ int sign_transaction_data(unsigned char* data, size_t data_len, const char* rsa_
     return ret;
 }
 
-int create_transaction(SecureProfile* sender, SecureProfile* receiver, const char* subject,
-    const char* message, const char* transaction_id_str, const char* transaction_name,
-    const char* sender_password) {  // Adaugă parametrul
+int create_transaction(SecureProfile* sender, SecureProfile* receiver, const char* subject, const char* message, const char* transaction_id_str, const char* transaction_name) {
     Transaction* transaction = NULL;
     unsigned char* symKey = NULL;
     unsigned char* iv = NULL;
@@ -185,9 +181,8 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
     snprintf(rsa_private_key_path, sizeof(rsa_private_key_path),
         "keys/%d_priv.rsa", sender->entity_id);
 
-    // Folosim parola primită ca parametru
     if (!sign_transaction_data(data_to_sign, data_to_sign_len,
-        rsa_private_key_path, sender_password, &signature, &signature_len)) {
+        rsa_private_key_path, sender->password, &signature, &signature_len)) {
         fprintf(stderr, "Failed to sign transaction\n");
         Transaction_free(transaction);
         free(symKey);
@@ -202,19 +197,8 @@ int create_transaction(SecureProfile* sender, SecureProfile* receiver, const cha
     der_len = i2d_Transaction(transaction, NULL);
     der_buf = (unsigned char*)malloc(der_len);
 
-    // Declară der_ptr aici
     unsigned char* der_ptr = der_buf;
     der_len = i2d_Transaction(transaction, &der_ptr);
-
-    printf("DEBUG: DER length calculated: %d\n", der_len);
-    printf("DEBUG: DER actually encoded: %d bytes\n", der_len);
-
-    // Debug - afișează primii bytes
-    printf("DEBUG: First 10 bytes of DER: ");
-    for (int i = 0; i < 10 && i < der_len; i++) {
-        printf("%02X ", der_buf[i]);
-    }
-    printf("\n");
 
     char output_filename[512];
     snprintf(output_filename, sizeof(output_filename), "transactions/%d_%d_%d.trx",
@@ -287,18 +271,15 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
     char transaction_file[512];
     snprintf(transaction_file, sizeof(transaction_file), "transactions/%s", transaction_name);
 
-    // Folosește FILE* pentru citire
     file = fopen(transaction_file, "rb");
     if (!file) {
         fprintf(stderr, "Failed to open transaction file: %s\n", transaction_file);
         return 0;
     }
 
-    // Obține dimensiunea fișierului
     fseek(file, 0, SEEK_END);
     file_size = ftell(file);
     fseek(file, 0, SEEK_SET);
-    printf("DEBUG: File size: %ld bytes\n", file_size);
 
     if (file_size <= 0) {
         fprintf(stderr, "File is empty or error getting size\n");
@@ -323,20 +304,11 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
     }
     fclose(file);
 
-    printf("DEBUG: Read %zu bytes from file\n", bytes_read);
-    printf("DEBUG: First 10 bytes: ");
-    for (int i = 0; i < 10 && i < file_size; i++) {
-        printf("%02X ", file_data[i]);
-    }
-    printf("\n");
-
-    // Decodează structura Transaction din DER
     const unsigned char* file_ptr = file_data;
     transaction = d2i_Transaction(NULL, &file_ptr, file_size);
     if (!transaction) {
         fprintf(stderr, "Failed to decode transaction\n");
 
-        // Mai mult debugging pentru eroarea OpenSSL
         unsigned long err = ERR_get_error();
         if (err) {
             char err_buf[256];
@@ -348,9 +320,6 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
         return 0;
     }
 
-    printf("DEBUG: Transaction decoded successfully\n");
-
-    // Citește cheia publică RSA
     BIO* bio = BIO_new_file(rsa_public_key_file, "r");
     if (!bio) {
         fprintf(stderr, "Failed to open RSA public key file\n");
@@ -359,7 +328,6 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
         return 0;
     }
 
-    // Citește RSA public key în format PKCS#1
     RSA* rsa = PEM_read_bio_RSA_PUBKEY(bio, NULL, NULL, NULL);
     BIO_free(bio);
 
@@ -370,7 +338,6 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
         return 0;
     }
 
-    // Convertește în EVP_PKEY
     rsa_key = EVP_PKEY_new();
     if (!rsa_key || EVP_PKEY_assign_RSA(rsa_key, rsa) != 1) {
         fprintf(stderr, "Failed to convert RSA to EVP_PKEY\n");
@@ -380,7 +347,6 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
         return 0;
     }
 
-    // Verifică semnătura
     mdctx = EVP_MD_CTX_new();
     if (!mdctx) {
         fprintf(stderr, "Failed to create verification context\n");
@@ -399,7 +365,6 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
         return 0;
     }
 
-    // Temporar elimină semnătura pentru a calcula hash-ul datelor originale
     ASN1_OCTET_STRING* original_sign = transaction->TransactionSign;
     transaction->TransactionSign = ASN1_OCTET_STRING_new();
     ASN1_STRING_set(transaction->TransactionSign, "", 0);
@@ -409,7 +374,6 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
     unsigned char* data_ptr = data;
     i2d_Transaction(transaction, &data_ptr);
 
-    // Restaurează semnătura originală
     ASN1_OCTET_STRING_free(transaction->TransactionSign);
     transaction->TransactionSign = original_sign;
 
@@ -441,9 +405,7 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
     printf("Transaction signature verified successfully!\n");
     log_action("System", "Transaction signature verified successfully");
 
-    // Încarcă elementele simetrice pentru decriptare
     int sym_elements_id = ASN1_INTEGER_get(transaction->SymElementsID);
-    printf("DEBUG: Loading SymElements with ID: %d\n", sym_elements_id);
 
     if (!load_sym_elements(sym_elements_id, &symKey, &iv)) {
         fprintf(stderr, "Failed to load SymElements for decryption\n");
@@ -455,7 +417,6 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
         return 0;
     }
 
-    // Decriptează mesajul
     if (!aes_128_fancy_ofb_decrypt(transaction->EncryptedData->data,
         transaction->EncryptedData->length,
         symKey, iv, &decrypted_message, &decrypted_len)) {
@@ -470,7 +431,6 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
         return 0;
     }
 
-    // Afișează detaliile tranzacției
     printf("\n=== Transaction Details ===\n");
     printf("Transaction ID: %ld\n", ASN1_INTEGER_get(transaction->TransactionID));
     printf("Subject: %.*s\n", transaction->Subject->length, transaction->Subject->data);
@@ -488,7 +448,6 @@ int verify_and_read_transaction(const char* transaction_name, const char* rsa_pu
         ASN1_INTEGER_get(transaction->ReceiverID));
     log_action("System", log_msg);
 
-    // Cleanup
     free(decrypted_message);
     free(symKey);
     free(iv);

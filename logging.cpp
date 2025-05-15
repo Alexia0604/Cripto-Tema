@@ -18,13 +18,11 @@ void log_action(const char* entity, const char* action)
     strftime(entry.date, sizeof(entry.date), "%Y-%m-%d", tm_info);
     strftime(entry.time, sizeof(entry.time), "%H:%M:%S", tm_info);
 
-    // Copiază entitatea și acțiunea
     strncpy(entry.entity, entity, sizeof(entry.entity) - 1);
     entry.entity[sizeof(entry.entity) - 1] = '\0';
     strncpy(entry.action, action, sizeof(entry.action) - 1);
     entry.action[sizeof(entry.action) - 1] = '\0';
 
-    // Scrie în format binar
     fwrite(&entry, sizeof(LogEntry), 1, log_file);
     fclose(log_file);
 }

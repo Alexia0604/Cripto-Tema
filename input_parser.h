@@ -8,16 +8,16 @@ typedef struct {
     char* transaction_id;
     char* sender_id;
     char* receiver_id;
-    char* subject;      // NOU: Subiect adăugat
+    char* subject;
     char* message;
 } TransactionInput;
 
 typedef struct {
     int num_entities;
-    char** entity_ids;          // Array de ID-uri
-    char** entity_passwords;    // NOU: Array de parole
+    char** entity_ids;
+    char** entity_passwords;
     int num_transactions;
-    TransactionInput* transactions;  // Array de tranzacții
+    TransactionInput* transactions;
 } InputData;
 
 InputData* parse_input_file(const char* filename);

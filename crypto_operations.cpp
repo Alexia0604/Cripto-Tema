@@ -3,28 +3,28 @@
 #include "crypto_operations.h"
 #include "gmac_operations.h"
 
-int get_sym_elements_id_for_transaction(int entity1_id, int entity2_id) {
-    // Normalizează ordinea
+int get_sym_elements_id_for_transaction(int entity1_id, int entity2_id)
+{
     int id1 = (entity1_id < entity2_id) ? entity1_id : entity2_id;
     int id2 = (entity1_id < entity2_id) ? entity2_id : entity1_id;
 
-    // Verifică dacă ULTIMUL sym creat este între aceleași entități
-    if (last_entity1 == id1 && last_entity2 == id2 && global_sym_counter > 0) {
-        // Dacă da, returnăm același ID (nu incrementăm)
+    // verifica daca ULTIMUL sym creat este intre aceleasi entitati
+    if (last_entity1 == id1 && last_entity2 == id2 && global_sym_counter > 0)
+    {
+        // daca da, returnam acelasi ID
         return global_sym_counter;
     }
     else {
-        // Dacă nu, returnăm -1 pentru a indica că nu există handshake
+        // daca nu, returnam -1 pentru a indica că nu există handshake
         return -1;
     }
 }
 
-int create_new_sym_elements(int entity1_id, int entity2_id) {
-    // Normalizează ordinea
+int create_new_sym_elements(int entity1_id, int entity2_id)
+{
     int id1 = (entity1_id < entity2_id) ? entity1_id : entity2_id;
     int id2 = (entity1_id < entity2_id) ? entity2_id : entity1_id;
 
-    // Incrementăm contorul și salvăm noua pereche
     global_sym_counter++;
     last_entity1 = id1;
     last_entity2 = id2;
@@ -59,7 +59,6 @@ int read_keys(const char* privateKeyFilename, const char* pubKeyFilename, const 
     }
     fclose(fp);
 
-    // Restul codului rămâne la fel
     FILE* fpp = fopen(pubKeyFilename, "r");
     if (fpp == NULL) {
         fprintf(stderr, "Null Pointer for %s file\n", pubKeyFilename);
@@ -128,7 +127,8 @@ int generate_shared_secret(EVP_PKEY* pkey, EVP_PKEY* peerkey, unsigned char** sk
     return 1;
 }
 
-int extract_coordinates(EVP_PKEY* pkey, EVP_PKEY* peerkey, unsigned char** x_bytes, size_t* x_len, unsigned char** y_bytes, size_t* y_len) {
+int extract_coordinates(EVP_PKEY* pkey, EVP_PKEY* peerkey, unsigned char** x_bytes, size_t* x_len, unsigned char** y_bytes, size_t* y_len)
+{
     const EC_KEY* ec_key = EVP_PKEY_get0_EC_KEY(pkey);
     if (!ec_key) {
         fprintf(stderr, "Failed to get EC_KEY from private key\n");
@@ -165,7 +165,7 @@ int extract_coordinates(EVP_PKEY* pkey, EVP_PKEY* peerkey, unsigned char** x_byt
         return 0;
     }
 
-    // Calculează punctul ECDH: shared_point = priv_key * peer_point
+    // shared_point = priv_key * peer_point
     if (!EC_POINT_mul(group, point, NULL, peer_point, priv_key, NULL)) {
         fprintf(stderr, "Failed to compute ECDH shared point\n");
         EC_POINT_free(point);
@@ -231,7 +231,7 @@ int derive_symmetric_key(unsigned char* x_bytes, size_t x_len, unsigned char* y_
         symLeft[i] = first_half[i] ^ second_half[i];
     }
 
-    // Calculează SymRight din coordonata y: PBKDF2 cu SHA-384, fără salt
+    // y: PBKDF2 cu SHA-384 fara salt
     size_t symRightLen = 48;
     unsigned char* symRight = (unsigned char*)malloc(symRightLen);
     if (!symRight) {
@@ -247,7 +247,7 @@ int derive_symmetric_key(unsigned char* x_bytes, size_t x_len, unsigned char* y_
         return 0;
     }
 
-    // Calculează SymKey: XOR între SymLeft și primii 16 octeți din SymRight
+    // symKey: XOR intre SymLeft si primii 16 octeți din SymRight
     *symKey = (unsigned char*)malloc(32);
     if (!*symKey) {
         fprintf(stderr, "Failed to allocate memory for SymKey\n");
@@ -259,7 +259,7 @@ int derive_symmetric_key(unsigned char* x_bytes, size_t x_len, unsigned char* y_
         (*symKey)[i] = symLeft[i] ^ symRight[i];
     }
 
-    // Returnează octeții neutilizați din SymRight
+    // octetii neutilizati din symRight
     *symRightUnusedLen = symRightLen - 16;
     *symRightUnused = (unsigned char*)malloc(*symRightUnusedLen);
     if (!*symRightUnused) {
@@ -286,19 +286,17 @@ unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilena
     size_t y_len;
     unsigned char* symKey = NULL;
 
-    // Citește cheile
     if (!read_keys(ecPrivateKeyFilename, ecPubKeyFilename, password1, &pkey, &peerkey)) {
         return NULL;
     }
 
-    // Extrage coordonatele x și y
+    // x si y
     if (!extract_coordinates(pkey, peerkey, &x_bytes, &x_len, &y_bytes, &y_len)) {
         EVP_PKEY_free(pkey);
         EVP_PKEY_free(peerkey);
         return NULL;
     }
 
-    // Derivă cheia simetrică SymKey
     if (!derive_symmetric_key(x_bytes, x_len, y_bytes, y_len, &symKey, symRightUnused, symRightUnusedLen)) {
         free(x_bytes);
         free(y_bytes);
@@ -307,7 +305,6 @@ unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilena
         return NULL;
     }
 
-    // Eliberează resursele temporare
     free(x_bytes);
     free(y_bytes);
     EVP_PKEY_free(pkey);
@@ -319,8 +316,7 @@ unsigned char* ecdh(const char* ecPrivateKeyFilename, const char* ecPubKeyFilena
     return symKey;
 }
 
-int generate_handshake(SecureProfile* entity1, SecureProfile* entity2,
-    const char* password1, const char* password2)
+int generate_handshake(SecureProfile* entity1, SecureProfile* entity2)
 {
     char private_path_1[256], public_path_1[256];
     char private_path_2[256], public_path_2[256];
@@ -337,13 +333,12 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2,
     snprintf(log_msg, sizeof(log_msg), "Initiating handshake with %s", entity2->entity_name);
     log_action(entity1->entity_name, log_msg);
 
-    // Construiește căile fișierelor
     snprintf(private_path_1, sizeof(private_path_1), "keys/%d_priv.ecc", entity1->entity_id);
     snprintf(public_path_1, sizeof(public_path_1), "keys/%d_pub.ecc", entity1->entity_id);
     snprintf(private_path_2, sizeof(private_path_2), "keys/%d_priv.ecc", entity2->entity_id);
     snprintf(public_path_2, sizeof(public_path_2), "keys/%d_pub.ecc", entity2->entity_id);
 
-    // Validează autenticitatea cheilor publice
+    //autenticitatea cheilor publice
     printf("Verifying authenticity of %s's public key...\n", entity2->entity_name);
     if (!validate_autenticity(entity2))
     {
@@ -362,11 +357,9 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2,
         return 0;
     }
 
-    // FOLOSEȘTE PAROLELE PRIMITE CA PARAMETRI, NU CITI DE LA STDIN!
-
-    // Schimb de chei ECDH - entity1
+    // schimb de chei ECDH - entity1
     printf("%s switches keys with %s...\n", entity1->entity_name, entity2->entity_name);
-    symKey1 = ecdh(private_path_1, public_path_2, password1, NULL, &symRightUnused1, &symRightUnusedLength1, &iv1);
+    symKey1 = ecdh(private_path_1, public_path_2, entity1->password, NULL, &symRightUnused1, &symRightUnusedLength1, &iv1);
 
     if (!symKey1)
     {
@@ -376,24 +369,21 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2,
     snprintf(log_msg, sizeof(log_msg), "Performed ECDH key exchange with %s", entity2->entity_name);
     log_action(entity1->entity_name, log_msg);
 
-    // Schimb de chei ECDH - entity2
+    // schimb de chei ECDH - entity2
     printf("%s switches keys with %s...\n", entity2->entity_name, entity1->entity_name);
-    symKey2 = ecdh(private_path_2, public_path_1, password2, NULL, &symRightUnused2, &symRightUnusedLength2, &iv2);
+    symKey2 = ecdh(private_path_2, public_path_1, entity2->password, NULL, &symRightUnused2, &symRightUnusedLength2, &iv2);
 
     if (!symKey2)
     {
         fprintf(stderr, "ECDH failed for %s\n", entity2->entity_name);
-        // Cleanup după eșecul ECDH pentru entity2
         if (iv1) free(iv1);
         if (symRightUnused1) free(symRightUnused1);
         if (symKey1) free(symKey1);
         return 0;
     }
 
-    // Verifică dacă cheile simetrice se potrivesc
     if (!symKey1 || !symKey2 || memcmp(symKey1, symKey2, 16) != 0) {
         fprintf(stderr, "Handshake failed: symmetric keys do not match!\n");
-        // Cleanup complet după eșec
         if (iv2) free(iv2);
         if (symRightUnused2) free(symRightUnused2);
         if (symKey2) free(symKey2);
@@ -403,16 +393,12 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2,
         return 0;
     }
 
-    // Handshake reușit - salvează elementele simetrice
     printf("Handshake successful! Saving symmetric elements...\n");
 
-    // Calculează ID-ul pentru SymElements (combinație unică)
     int sym_elements_id = create_new_sym_elements(entity1->entity_id, entity2->entity_id);
 
-    // Salvează elementele simetrice pentru comunicarea lor
     if (!save_sym_elements(symKey1, iv1, sym_elements_id)) {
         fprintf(stderr, "Failed to save SymElements\n");
-        // Cleanup complet după eșec salvare
         if (iv2) free(iv2);
         if (symRightUnused2) free(symRightUnused2);
         if (symKey2) free(symKey2);
@@ -430,7 +416,6 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2,
         log_action(entity1->entity_name, log_msg);
     }
 
-    // Succes total
     printf("Symmetric elements saved with ID: %d\n", sym_elements_id);
     printf("Handshake completed successfully between %s (ID: %d) and %s (ID: %d)\n",
         entity1->entity_name, entity1->entity_id,
@@ -439,7 +424,6 @@ int generate_handshake(SecureProfile* entity1, SecureProfile* entity2,
     snprintf(log_msg, sizeof(log_msg), "Completed handshake with %s", entity2->entity_name);
     log_action(entity1->entity_name, log_msg);
 
-    // Cleanup final - eliberează toate resursele
     if (iv2) free(iv2);
     if (symRightUnused2) free(symRightUnused2);
     if (symKey2) free(symKey2);
@@ -454,19 +438,18 @@ int aes_128_fancy_ofb_encrypt(unsigned char* plaintext, size_t plaintext_len, un
     AES_KEY aes_key;
     unsigned char* output = NULL;
 
-    // Verifică lungimea cheii
+    // verifica lungimea cheii
     if (AES_set_encrypt_key(key, 128, &aes_key) != 0) {
         fprintf(stderr, "Error setting AES key!\n");
         return 0;
     }
 
-    // Inversează IV-ul
+    // inverseaza IV-ul
     unsigned char inv_iv[AES_BLOCK_SIZE];
     for (int i = 0; i < AES_BLOCK_SIZE; i++) {
         inv_iv[i] = iv[AES_BLOCK_SIZE - 1 - i];
     }
 
-    // Aloca memorie pentru output
     output = (unsigned char*)malloc(plaintext_len);
     if (!output) {
         fprintf(stderr, "Failed to allocate memory for ciphertext\n");
@@ -476,23 +459,21 @@ int aes_128_fancy_ofb_encrypt(unsigned char* plaintext, size_t plaintext_len, un
     unsigned char current_iv[AES_BLOCK_SIZE];
     memcpy(current_iv, iv, AES_BLOCK_SIZE);
 
-    // Criptează pe blocuri
-    for (size_t i = 0; i < plaintext_len; i += AES_BLOCK_SIZE) {
+    for (size_t i = 0; i < plaintext_len; i += AES_BLOCK_SIZE) 
+    {
         unsigned char encrypted_block[AES_BLOCK_SIZE];
         unsigned char modified_block[AES_BLOCK_SIZE];
 
-        // Criptează IV-ul curent
         AES_encrypt(current_iv, encrypted_block, &aes_key);
 
-        // Actualizează IV-ul pentru următorul bloc
         memcpy(current_iv, encrypted_block, AES_BLOCK_SIZE);
 
-        // MODIFICARE PRINCIPALĂ: XOR cu inv_IV în loc de +5
-        for (int j = 0; j < AES_BLOCK_SIZE; j++) {
+        // XOR cu inv_IV
+        for (int j = 0; j < AES_BLOCK_SIZE; j++) 
+        {
             modified_block[j] = encrypted_block[j] ^ inv_iv[j];
         }
 
-        // XOR cu plaintext pentru a obține ciphertext
         size_t block_len = (plaintext_len - i < AES_BLOCK_SIZE) ?
             (plaintext_len - i) : AES_BLOCK_SIZE;
 
@@ -512,19 +493,18 @@ int aes_128_fancy_ofb_decrypt(unsigned char* ciphertext, size_t ciphertext_len, 
     AES_KEY aes_key;
     unsigned char* output = NULL;
 
-    // Verifică lungimea cheii
+    // verifica lungimea cheii
     if (AES_set_encrypt_key(key, 128, &aes_key) != 0) {
         fprintf(stderr, "Error setting AES key!\n");
         return 0;
     }
 
-    // Inversează IV-ul
+    // inverseaza IV-ul
     unsigned char inv_iv[AES_BLOCK_SIZE];
     for (int i = 0; i < AES_BLOCK_SIZE; i++) {
         inv_iv[i] = iv[AES_BLOCK_SIZE - 1 - i];
     }
 
-    // Aloca memorie pentru output
     output = (unsigned char*)malloc(ciphertext_len);
     if (!output) {
         fprintf(stderr, "Failed to allocate memory for plaintext\n");
@@ -534,23 +514,20 @@ int aes_128_fancy_ofb_decrypt(unsigned char* ciphertext, size_t ciphertext_len, 
     unsigned char current_iv[AES_BLOCK_SIZE];
     memcpy(current_iv, iv, AES_BLOCK_SIZE);
 
-    // Decriptează pe blocuri
-    for (size_t i = 0; i < ciphertext_len; i += AES_BLOCK_SIZE) {
+    for (size_t i = 0; i < ciphertext_len; i += AES_BLOCK_SIZE) 
+    {
         unsigned char encrypted_block[AES_BLOCK_SIZE];
         unsigned char modified_block[AES_BLOCK_SIZE];
 
-        // Criptează IV-ul curent
         AES_encrypt(current_iv, encrypted_block, &aes_key);
 
-        // Actualizează IV-ul pentru următorul bloc
         memcpy(current_iv, encrypted_block, AES_BLOCK_SIZE);
 
-        // MODIFICARE PRINCIPALĂ: XOR cu inv_IV în loc de +5
+        // XOR cu inv_IV
         for (int j = 0; j < AES_BLOCK_SIZE; j++) {
             modified_block[j] = encrypted_block[j] ^ inv_iv[j];
         }
 
-        // XOR cu ciphertext pentru a obține plaintext
         size_t block_len = (ciphertext_len - i < AES_BLOCK_SIZE) ?
             (ciphertext_len - i) : AES_BLOCK_SIZE;
 

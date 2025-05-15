@@ -14,7 +14,6 @@
 #include "transaction.h"
 
 
-// Funcție ajutătoare pentru a găsi o entitate după ID
 SecureProfile* find_entity_by_id(SecureProfile** entities, int num_entities, const char* id) {
     for (int i = 0; i < num_entities; i++) {
         if (strcmp(entities[i]->entity_name, id) == 0) {
@@ -24,14 +23,13 @@ SecureProfile* find_entity_by_id(SecureProfile** entities, int num_entities, con
     return NULL;
 }
 
-int main(int argc, char* argv[]) {
-    // Verifică argumentele
+int main(int argc, char* argv[]) 
+{
     if (argc < 2) {
         fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
         return 1;
     }
 
-    // Parsează fișierul de input
     InputData* input_data = parse_input_file(argv[1]);
     if (!input_data) {
         fprintf(stderr, "Failed to parse input file\n");
@@ -42,7 +40,6 @@ int main(int argc, char* argv[]) {
     create_output_dirs();
     log_action("System", "Created output directories");
 
-    // Creează un array pentru entități
     SecureProfile** entities = (SecureProfile**)malloc(
         input_data->num_entities * sizeof(SecureProfile*));
     if (!entities) {
@@ -50,20 +47,15 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    // Creează entitățile bazate pe input
-    for (int i = 0; i < input_data->num_entities; i++) {
-        entities[i] = create_SecureProfile(
-            input_data->entity_ids[i],
-            NULL,  // Folosește parola din input
-            i + 1
-        );
+    for (int i = 0; i < input_data->num_entities; i++) 
+    {
+        entities[i] = create_SecureProfile(input_data->entity_ids[i], input_data->entity_passwords[i],i + 1);
 
         if (!entities[i]) {
-            fprintf(stderr, "Failed to create entity: %s\n",
-                input_data->entity_ids[i]);
-            // Cleanup
+            fprintf(stderr, "Failed to create entity: %s\n", input_data->entity_ids[i]);
             for (int j = 0; j < i; j++) {
                 if (entities[j]->entity_name) free(entities[j]->entity_name);
+                if (entities[j]->password) free(entities[j]->password);
                 free(entities[j]);
             }
             free(entities);
@@ -73,20 +65,19 @@ int main(int argc, char* argv[]) {
 
         // Generează cheile EC
         printf("Generating EC key for %s...\n", entities[i]->entity_name);
-        if (!generate_entity_keys(entities[i],input_data->entity_passwords[i])) {
+        if (!generate_entity_keys(entities[i])) 
+        {
             fprintf(stderr, "EC key generation failed for entity: %s\n",
                 entities[i]->entity_name);
-            // Cleanup complet
-            // ...
             return 1;
         }
 
         // Generează cheile RSA
         printf("Generating RSA keys for %s...\n", entities[i]->entity_name);
-        if (!generate_rsa_keys(entities[i],input_data->entity_passwords[i])) {
+        if (!generate_rsa_keys(entities[i])) 
+        {
             fprintf(stderr, "RSA key generation failed for entity: %s\n",
                 entities[i]->entity_name);
-            // Cleanup
             return 1;
         }
 
@@ -94,7 +85,6 @@ int main(int argc, char* argv[]) {
         if (!compute_gmac_rsa(entities[i])) {
             fprintf(stderr, "RSA GMAC computation failed for entity: %s\n",
                 entities[i]->entity_name);
-            // Cleanup
             return 1;
         }
 
@@ -116,7 +106,6 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < input_data->num_transactions; i++) {
         TransactionInput* tr = &input_data->transactions[i];
 
-        // Găsește entitățile sender și receiver
         SecureProfile* sender = find_entity_by_id(entities,
             input_data->num_entities, tr->sender_id);
         SecureProfile* receiver = find_entity_by_id(entities,
@@ -131,12 +120,10 @@ int main(int argc, char* argv[]) {
         printf("\nProcessing transaction %s from %s to %s...\n",
             tr->transaction_id, sender->entity_name, receiver->entity_name);
 
-        // AICI FACEM HANDSHAKE-UL DOAR DACĂ NU EXISTĂ DEJA
-        // Verifică dacă există deja un SymElements pentru această pereche
         int sym_id = get_sym_elements_id_for_transaction(sender->entity_id, receiver->entity_id);
 
-        if (sym_id == -1) {
-            // Nu există handshake anterior, trebuie să facem unul nou
+        if (sym_id == -1) 
+        {
             printf("No handshake found between %s and %s, performing handshake...\n",
                 sender->entity_name, receiver->entity_name);
 
@@ -157,7 +144,7 @@ int main(int argc, char* argv[]) {
                 continue;
             }
 
-            if (!generate_handshake(sender, receiver,password1,password2)) {
+            if (!generate_handshake(sender, receiver)) {
                 fprintf(stderr, "Handshake failed between %s and %s!\n",
                     sender->entity_name, receiver->entity_name);
                 continue;
@@ -169,12 +156,9 @@ int main(int argc, char* argv[]) {
             printf("Using existing handshake (SymElements ID: %d)\n", sym_id);
         }
 
-        // Creează numele fișierului pentru tranzacție
         char transaction_filename[256];
-        snprintf(transaction_filename, sizeof(transaction_filename),
-            "%d_%d_%s.trx", sender->entity_id, receiver->entity_id, tr->transaction_id);
+        snprintf(transaction_filename, sizeof(transaction_filename), "%d_%d_%s.trx", sender->entity_id, receiver->entity_id, tr->transaction_id);
 
-        // Găsește parola pentru sender din input_data
         char* sender_password = NULL;
         for (int j = 0; j < input_data->num_entities; j++) {
             if (strcmp(input_data->entity_ids[j], tr->sender_id) == 0) {
@@ -183,24 +167,22 @@ int main(int argc, char* argv[]) {
             }
         }
 
-        if (!sender_password) {
+        if (!sender_password) 
+        {
             fprintf(stderr, "Failed to find password for sender %s\n", tr->sender_id);
             continue;
         }
 
-        // Creează tranzacția
-        if (create_transaction(sender, receiver, tr->subject,
-            tr->message, tr->transaction_id, transaction_filename, sender_password)) {
+        if (create_transaction(sender, receiver, tr->subject, tr->message, tr->transaction_id, transaction_filename)) 
+        {
             printf("Transaction %s created successfully!\n", tr->transaction_id);
 
-            // Verifică tranzacția
             char rsa_public_key_path[512];
-            snprintf(rsa_public_key_path, sizeof(rsa_public_key_path),
-                "keys/%d_pub.rsa", sender->entity_id);
+            snprintf(rsa_public_key_path, sizeof(rsa_public_key_path), "keys/%d_pub.rsa", sender->entity_id);
 
             printf("Verifying transaction %s...\n", tr->transaction_id);
-            if (verify_and_read_transaction(transaction_filename,
-                rsa_public_key_path)) {
+            if (verify_and_read_transaction(transaction_filename, rsa_public_key_path)) 
+            {
                 printf("Transaction %s verified successfully!\n",
                     tr->transaction_id);
             }
@@ -217,21 +199,19 @@ int main(int argc, char* argv[]) {
     printf("\n=== All operations completed! ===\n");
     log_action("System", "Application completed successfully");
 
-    // Cleanup complet
     for (int i = 0; i < input_data->num_entities; i++) {
         if (entities[i]) {
             if (entities[i]->entity_name) free(entities[i]->entity_name);
+            if (entities[i]->password) free(entities[i]->password);
             if (entities[i]->gmac) free(entities[i]->gmac);
             free(entities[i]);
         }
     }
     free(entities);
 
-    // Eliberează datele de input
     free_input_data(input_data);
 
-    // Afișează log-ul
-    display_log();
+    //display_log();
 
     return 0;
 }

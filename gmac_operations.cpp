@@ -38,7 +38,7 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
-    // Extrage cheia publică în format raw
+    // cheia publica in format raw
     pub_key_len = i2d_PUBKEY(temp_public_key, NULL);
     if (pub_key_len <= 0) {
         fprintf(stderr, "Failed to get public key length\n");
@@ -62,7 +62,7 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
-    // Generează cheia simetrică cu PKCS5_PBKDF2_HMAC
+    // cheia simetrica cu PKCS5_PBKDF2_HMAC
     if (PKCS5_PBKDF2_HMAC((const char*)&diff_time, sizeof(diff_time), NULL, 0,
         1000, EVP_sha3_256(), 32, sym_key) <= 0) {
         fprintf(stderr, "Failed to derive symmetric key\n");
@@ -71,7 +71,6 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
-    // AICI ESTE SCHIMBAREA PRINCIPALĂ - GMAC în loc de CMAC
     EVP_CIPHER_CTX* gmac_ctx = EVP_CIPHER_CTX_new();
     if (!gmac_ctx) {
         fprintf(stderr, "Failed to create GMAC context\n");
@@ -80,7 +79,7 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
-    // Inițializează GMAC (AES-256-GCM fără date criptate)
+    // GMAC
     if (EVP_EncryptInit_ex(gmac_ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) <= 0) {
         fprintf(stderr, "Failed to initialize GMAC cipher\n");
         free(pub_key_data);
@@ -89,7 +88,7 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
-    // Setează lungimea IV pentru GCM (standard 12 bytes)
+    // IV pentru GCM
     if (EVP_CIPHER_CTX_ctrl(gmac_ctx, EVP_CTRL_GCM_SET_IVLEN, 12, NULL) <= 0) {
         fprintf(stderr, "Failed to set IV length\n");
         free(pub_key_data);
@@ -101,7 +100,7 @@ int compute_gmac(SecureProfile* entity)
     // IV de zerouri pentru GMAC
     unsigned char iv[12] = { 0 };
 
-    // Setează cheia și IV
+    // cheie si IV
     if (EVP_EncryptInit_ex(gmac_ctx, NULL, NULL, sym_key, iv) <= 0) {
         fprintf(stderr, "Failed to set key and IV\n");
         free(pub_key_data);
@@ -110,7 +109,6 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
-    // Pentru GMAC, folosim doar AAD (Additional Authenticated Data), nu criptăm nimic
     int outlen;
     if (EVP_EncryptUpdate(gmac_ctx, NULL, &outlen, pub_key_data, pub_key_len) <= 0) {
         fprintf(stderr, "Failed to process AAD\n");
@@ -120,7 +118,6 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
-    // Finalizează (nu produce output pentru GMAC)
     if (EVP_EncryptFinal_ex(gmac_ctx, NULL, &outlen) <= 0) {
         fprintf(stderr, "Failed to finalize GMAC\n");
         free(pub_key_data);
@@ -129,7 +126,7 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
-    // Obține tag-ul GMAC (16 bytes pentru AES-256-GCM)
+    // tag-ul GMAC
     entity->gmac_len = 16;
     entity->gmac = (unsigned char*)malloc(entity->gmac_len);
     if (!entity->gmac) {
@@ -150,12 +147,10 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
-    // Eliberez contexte
     EVP_CIPHER_CTX_free(gmac_ctx);
     EVP_PKEY_free(temp_public_key);
-    // NU MAI ELIBERĂM pub_key_data AICI - îl vom elibera la final
 
-    // Creează structura PubKeyMAC
+    // structura PubKeyMAC
     PubKeyMAC* pub_key_mac = PubKeyMAC_new();
     if (!pub_key_mac) {
         fprintf(stderr, "Failed to create PubKeyMAC\n");
@@ -234,7 +229,7 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
-    // Codifică în DER
+    // codificare DER
     int der_len = i2d_PubKeyMAC(pub_key_mac, NULL);
     if (der_len <= 0) {
         fprintf(stderr, "Failed to get DER length\n");
@@ -276,10 +271,9 @@ int compute_gmac(SecureProfile* entity)
         return 0;
     }
 
-    // Eliberez pub_key_mac, nu mai este necesar
     PubKeyMAC_free(pub_key_mac);
 
-    // Salvează în fișier raw
+    // salvare in fisiere raw
     snprintf(mac_path, sizeof(mac_path), "macs/%d_ecc.mac", entity->entity_id);
     BIO* mac_bio = BIO_new_file(mac_path, "wb");
     if (!mac_bio) {
@@ -303,7 +297,7 @@ int compute_gmac(SecureProfile* entity)
 
     BIO_free(mac_bio);
     free(der_buf);
-    free(pub_key_data);  // ELIBERARE SINGURĂ LA FINAL
+    free(pub_key_data);
 
     log_action(entity->entity_name, "Computed and saved GMAC for public key");
 
@@ -324,7 +318,6 @@ int validate_autenticity(SecureProfile* entity)
     size_t computed_gmac_len = 0;
     EVP_PKEY* received_public_key = NULL;
 
-    // Verifică dacă entitatea este validă
     if (!entity) {
         fprintf(stderr, "Entity is NULL\n");
         return 0;
@@ -334,10 +327,8 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Construiește calea către fișierul cheii publice
     snprintf(pub_key_path, sizeof(pub_key_path), "keys/%d_pub.ecc", entity->entity_id);
 
-    // Citește cheia publică din fișier
     BIO* pub_bio = BIO_new_file(pub_key_path, "r");
     if (!pub_bio) {
         fprintf(stderr, "Failed to open public key file: %s\n", pub_key_path);
@@ -352,10 +343,8 @@ int validate_autenticity(SecureProfile* entity)
     }
     BIO_free(pub_bio);
 
-    // Construiește calea către fișierul GMAC
     snprintf(gmac_path, sizeof(gmac_path), "macs/%d_ecc.mac", entity->entity_id);
 
-    // Citește fișierul GMAC și decodează structura PubKeyMAC
     BIO* mac_bio = BIO_new_file(gmac_path, "rb");
     if (!mac_bio) {
         fprintf(stderr, "Failed to open GMAC file: %s\n", gmac_path);
@@ -363,10 +352,10 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Citește conținutul fișierului GMAC într-un buffer dinamic
+
     unsigned char* gmac_file_data = NULL;
     int gmac_file_size = 0;
-    int buffer_size = 1024; // Dimensiune inițială a buffer-ului
+    int buffer_size = 1024;
     int bytes_read = 0;
 
     gmac_file_data = (unsigned char*)malloc(buffer_size);
@@ -377,10 +366,9 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Citește fișierul treptat, realocând buffer-ul dacă este necesar
     while ((bytes_read = BIO_read(mac_bio, gmac_file_data + gmac_file_size, buffer_size - gmac_file_size)) > 0) {
         gmac_file_size += bytes_read;
-        if (gmac_file_size >= buffer_size - 1) { // Realocă buffer-ul dacă este aproape plin
+        if (gmac_file_size >= buffer_size - 1) {
             buffer_size *= 2;
             unsigned char* temp = (unsigned char*)realloc(gmac_file_data, buffer_size);
             if (!temp) {
@@ -404,7 +392,6 @@ int validate_autenticity(SecureProfile* entity)
 
     BIO_free(mac_bio);
 
-    // Verifică dacă fișierul este gol
     if (gmac_file_size == 0) {
         fprintf(stderr, "GMAC file is empty: %s\n", gmac_path);
         free(gmac_file_data);
@@ -412,7 +399,6 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Decodează structura PubKeyMAC din format DER
     const unsigned char* gmac_file_ptr = gmac_file_data;
     PubKeyMAC* pub_key_mac = d2i_PubKeyMAC(NULL, &gmac_file_ptr, gmac_file_size);
     if (!pub_key_mac) {
@@ -423,13 +409,13 @@ int validate_autenticity(SecureProfile* entity)
     }
     free(gmac_file_data);
 
-    // Extrage cheia simetrică și valoarea GMAC stocată
+    // cheia simetrica si valoarea GMAC stocata
     unsigned char* stored_sym_key = pub_key_mac->MACKey->data;
     size_t stored_sym_key_len = pub_key_mac->MACKey->length;
     unsigned char* stored_gmac = pub_key_mac->MACValue->data;
     size_t stored_gmac_len = pub_key_mac->MACValue->length;
 
-    // Recalculează cheia simetrică pentru validare suplimentară
+    // recalculare cheie simetrică pentru validare
     if (PKCS5_PBKDF2_HMAC((const char*)&diff_time, sizeof(diff_time), NULL, 0,
         1000, EVP_sha3_256(), 32, sym_key) <= 0) {
         fprintf(stderr, "Failed to derive symmetric key for verification\n");
@@ -438,7 +424,7 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Verifică dacă cheia simetrică recalculată se potrivește cu cea stocată
+    // verificare daca cheia simetrica recalculata se potriveste cu cea stocata
     if (stored_sym_key_len != 32 || memcmp(sym_key, stored_sym_key, 32) != 0) {
         fprintf(stderr, "Symmetric key mismatch\n");
         char log_msg[256];
@@ -449,7 +435,7 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Convertește cheia publică citită în format raw
+    // convertire cheie publica citita in format raw
     pub_key_len = i2d_PUBKEY(received_public_key, NULL);
     if (pub_key_len <= 0) {
         fprintf(stderr, "Failed to get public key length\n");
@@ -476,7 +462,6 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // AICI ÎNCEPE PARTEA CU GMAC
     EVP_CIPHER_CTX* gmac_ctx = EVP_CIPHER_CTX_new();
     if (!gmac_ctx) {
         fprintf(stderr, "Failed to create GMAC context\n");
@@ -486,7 +471,7 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Inițializează GMAC (AES-256-GCM fără date criptate)
+    // GMAC (AES-256-GCM)
     if (EVP_EncryptInit_ex(gmac_ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) <= 0) {
         fprintf(stderr, "Failed to initialize GMAC cipher\n");
         free(pub_key_data);
@@ -496,7 +481,7 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Setează lungimea IV pentru GCM (standard 12 bytes)
+    // IV pentru GCM
     if (EVP_CIPHER_CTX_ctrl(gmac_ctx, EVP_CTRL_GCM_SET_IVLEN, 12, NULL) <= 0) {
         fprintf(stderr, "Failed to set IV length\n");
         free(pub_key_data);
@@ -506,10 +491,9 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // IV de zerouri pentru GMAC
     unsigned char iv[12] = { 0 };
 
-    // Setează cheia și IV
+    // setrae cheie si IV
     if (EVP_EncryptInit_ex(gmac_ctx, NULL, NULL, sym_key, iv) <= 0) {
         fprintf(stderr, "Failed to set key and IV\n");
         free(pub_key_data);
@@ -519,7 +503,6 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Pentru GMAC, folosim doar AAD (Additional Authenticated Data), nu criptăm nimic
     int outlen;
     if (EVP_EncryptUpdate(gmac_ctx, NULL, &outlen, pub_key_data, pub_key_len) <= 0) {
         fprintf(stderr, "Failed to process AAD\n");
@@ -530,7 +513,6 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Finalizează (nu produce output pentru GMAC)
     if (EVP_EncryptFinal_ex(gmac_ctx, NULL, &outlen) <= 0) {
         fprintf(stderr, "Failed to finalize GMAC\n");
         free(pub_key_data);
@@ -540,7 +522,7 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Obține tag-ul GMAC (16 bytes pentru AES-256-GCM)
+    // tag-ul GMAC 
     computed_gmac_len = 16;
     computed_gmac = (unsigned char*)malloc(computed_gmac_len);
     if (!computed_gmac) {
@@ -562,12 +544,10 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Eliberează resursele care nu mai sunt necesare
     EVP_CIPHER_CTX_free(gmac_ctx);
     free(pub_key_data);
     EVP_PKEY_free(received_public_key);
 
-    // Compară GMAC-ul recalculat cu cel stocat
     if (computed_gmac_len != stored_gmac_len || memcmp(computed_gmac, stored_gmac, computed_gmac_len) != 0) {
         fprintf(stderr, "GMAC verification failed: mismatch\n");
         free(computed_gmac);
@@ -575,7 +555,6 @@ int validate_autenticity(SecureProfile* entity)
         return 0;
     }
 
-    // Verificare reușită
     free(computed_gmac);
     PubKeyMAC_free(pub_key_mac);
 
@@ -617,7 +596,7 @@ int compute_gmac_rsa(SecureProfile* entity)
     temp_rsa_public_key = EVP_PKEY_new();
     EVP_PKEY_assign_RSA(temp_rsa_public_key, rsa);
 
-    // Extrage cheia publică RSA în format raw
+    // extragere cheia publica RSA in format raw
     pub_key_len = i2d_PUBKEY(temp_rsa_public_key, NULL);
     if (pub_key_len <= 0) {
         fprintf(stderr, "Failed to get RSA public key length\n");
@@ -641,7 +620,6 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Generează cheia simetrică cu PKCS5_PBKDF2_HMAC (același mecanism ca pentru EC)
     if (PKCS5_PBKDF2_HMAC((const char*)&diff_time, sizeof(diff_time), NULL, 0,
         1000, EVP_sha3_256(), 32, sym_key) <= 0) {
         fprintf(stderr, "Failed to derive symmetric key for RSA\n");
@@ -650,7 +628,6 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // GMAC pentru RSA (la fel ca pentru EC)
     EVP_CIPHER_CTX* gmac_ctx = EVP_CIPHER_CTX_new();
     if (!gmac_ctx) {
         fprintf(stderr, "Failed to create GMAC context for RSA\n");
@@ -659,7 +636,6 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Inițializează GMAC (AES-256-GCM fără date criptate)
     if (EVP_EncryptInit_ex(gmac_ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) <= 0) {
         fprintf(stderr, "Failed to initialize GMAC cipher for RSA\n");
         free(pub_key_data);
@@ -668,7 +644,6 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Setează lungimea IV pentru GCM (standard 12 bytes)
     if (EVP_CIPHER_CTX_ctrl(gmac_ctx, EVP_CTRL_GCM_SET_IVLEN, 12, NULL) <= 0) {
         fprintf(stderr, "Failed to set IV length for RSA\n");
         free(pub_key_data);
@@ -677,10 +652,8 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // IV de zerouri pentru GMAC
     unsigned char iv[12] = { 0 };
 
-    // Setează cheia și IV
     if (EVP_EncryptInit_ex(gmac_ctx, NULL, NULL, sym_key, iv) <= 0) {
         fprintf(stderr, "Failed to set key and IV for RSA\n");
         free(pub_key_data);
@@ -689,7 +662,6 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Pentru GMAC, folosim doar AAD (Additional Authenticated Data), nu criptăm nimic
     int outlen;
     if (EVP_EncryptUpdate(gmac_ctx, NULL, &outlen, pub_key_data, pub_key_len) <= 0) {
         fprintf(stderr, "Failed to process AAD for RSA\n");
@@ -699,7 +671,6 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Finalizează (nu produce output pentru GMAC)
     if (EVP_EncryptFinal_ex(gmac_ctx, NULL, &outlen) <= 0) {
         fprintf(stderr, "Failed to finalize GMAC for RSA\n");
         free(pub_key_data);
@@ -708,7 +679,6 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Obține tag-ul GMAC (16 bytes pentru AES-256-GCM)
     size_t gmac_rsa_len = 16;
     unsigned char* gmac_rsa = (unsigned char*)malloc(gmac_rsa_len);
     if (!gmac_rsa) {
@@ -728,12 +698,9 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Eliberez contexte
     EVP_CIPHER_CTX_free(gmac_ctx);
     EVP_PKEY_free(temp_rsa_public_key);
-    // NU MAI ELIBERĂM pub_key_data AICI - îl vom elibera la final
 
-    // Creează structura PubKeyMAC pentru RSA
     PubKeyMAC* pub_key_mac = PubKeyMAC_new();
     if (!pub_key_mac) {
         fprintf(stderr, "Failed to create PubKeyMAC for RSA\n");
@@ -754,7 +721,6 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Setează numele pentru RSA (poți să adaugi "_rsa" ca să fie diferit)
     char rsa_name[128];
     snprintf(rsa_name, sizeof(rsa_name), "%s_rsa", entity->entity_name);
 
@@ -782,7 +748,6 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Codifică în DER
     int der_len = i2d_PubKeyMAC(pub_key_mac, NULL);
     if (der_len <= 0) {
         fprintf(stderr, "Failed to get DER length for RSA\n");
@@ -812,10 +777,8 @@ int compute_gmac_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Eliberez pub_key_mac
     PubKeyMAC_free(pub_key_mac);
 
-    // Salvează în fișier raw
     snprintf(mac_path, sizeof(mac_path), "macs/%d_rsa.mac", entity->entity_id);
     BIO* mac_bio = BIO_new_file(mac_path, "wb");
     if (!mac_bio) {
@@ -838,7 +801,7 @@ int compute_gmac_rsa(SecureProfile* entity)
     BIO_free(mac_bio);
     free(der_buf);
     free(gmac_rsa);
-    free(pub_key_data);  // ELIBERARE SINGURĂ LA FINAL
+    free(pub_key_data);
 
     log_action(entity->entity_name, "Computed and saved GMAC for RSA public key");
 
@@ -859,7 +822,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
     size_t computed_gmac_len = 0;
     EVP_PKEY* received_public_key = NULL;
 
-    // Verifică dacă entitatea este validă
     if (!entity) {
         fprintf(stderr, "Entity is NULL\n");
         return 0;
@@ -869,17 +831,14 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Construiește calea către fișierul cheii publice RSA
     snprintf(pub_key_path, sizeof(pub_key_path), "keys/%d_pub.rsa", entity->entity_id);
 
-    // Citește cheia publică RSA din fișier
     BIO* pub_bio = BIO_new_file(pub_key_path, "r");
     if (!pub_bio) {
         fprintf(stderr, "Failed to open RSA public key file: %s\n", pub_key_path);
         return 0;
     }
 
-    // Pentru RSA, folosim PEM_read_bio_RSA_PUBKEY
     RSA* rsa = PEM_read_bio_RSA_PUBKEY(pub_bio, NULL, NULL, NULL);
     if (!rsa) {
         fprintf(stderr, "Failed to read RSA public key from file: %s\n", pub_key_path);
@@ -887,7 +846,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Convertește RSA în EVP_PKEY
     received_public_key = EVP_PKEY_new();
     if (!received_public_key || EVP_PKEY_assign_RSA(received_public_key, rsa) != 1) {
         fprintf(stderr, "Failed to convert RSA to EVP_PKEY\n");
@@ -897,10 +855,8 @@ int validate_autenticity_rsa(SecureProfile* entity)
     }
     BIO_free(pub_bio);
 
-    // Construiește calea către fișierul GMAC pentru RSA
     snprintf(gmac_path, sizeof(gmac_path), "macs/%d_rsa.mac", entity->entity_id);
 
-    // Citește fișierul GMAC și decodează structura PubKeyMAC (același proces ca pentru EC)
     BIO* mac_bio = BIO_new_file(gmac_path, "rb");
     if (!mac_bio) {
         fprintf(stderr, "Failed to open RSA GMAC file: %s\n", gmac_path);
@@ -908,7 +864,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Citește conținutul fișierului GMAC într-un buffer dinamic
     unsigned char* gmac_file_data = NULL;
     int gmac_file_size = 0;
     int buffer_size = 1024;
@@ -955,7 +910,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Decodează structura PubKeyMAC din format DER
     const unsigned char* gmac_file_ptr = gmac_file_data;
     PubKeyMAC* pub_key_mac = d2i_PubKeyMAC(NULL, &gmac_file_ptr, gmac_file_size);
     if (!pub_key_mac) {
@@ -966,13 +920,11 @@ int validate_autenticity_rsa(SecureProfile* entity)
     }
     free(gmac_file_data);
 
-    // Extrage cheia simetrică și valoarea GMAC stocată
     unsigned char* stored_sym_key = pub_key_mac->MACKey->data;
     size_t stored_sym_key_len = pub_key_mac->MACKey->length;
     unsigned char* stored_gmac = pub_key_mac->MACValue->data;
     size_t stored_gmac_len = pub_key_mac->MACValue->length;
 
-    // Recalculează cheia simetrică pentru validare suplimentară
     if (PKCS5_PBKDF2_HMAC((const char*)&diff_time, sizeof(diff_time), NULL, 0,
         1000, EVP_sha3_256(), 32, sym_key) <= 0) {
         fprintf(stderr, "Failed to derive symmetric key for RSA verification\n");
@@ -981,7 +933,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Verifică dacă cheia simetrică recalculată se potrivește cu cea stocată
     if (stored_sym_key_len != 32 || memcmp(sym_key, stored_sym_key, 32) != 0) {
         fprintf(stderr, "RSA symmetric key mismatch\n");
         char log_msg[256];
@@ -992,7 +943,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Convertește cheia publică citită în format raw
     pub_key_len = i2d_PUBKEY(received_public_key, NULL);
     if (pub_key_len <= 0) {
         fprintf(stderr, "Failed to get RSA public key length\n");
@@ -1019,7 +969,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Calculează GMAC pentru RSA
     EVP_CIPHER_CTX* gmac_ctx = EVP_CIPHER_CTX_new();
     if (!gmac_ctx) {
         fprintf(stderr, "Failed to create GMAC context for RSA\n");
@@ -1029,7 +978,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Inițializează GMAC (AES-256-GCM fără date criptate)
     if (EVP_EncryptInit_ex(gmac_ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) <= 0) {
         fprintf(stderr, "Failed to initialize GMAC cipher for RSA\n");
         free(pub_key_data);
@@ -1039,7 +987,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Setează lungimea IV pentru GCM (standard 12 bytes)
     if (EVP_CIPHER_CTX_ctrl(gmac_ctx, EVP_CTRL_GCM_SET_IVLEN, 12, NULL) <= 0) {
         fprintf(stderr, "Failed to set IV length for RSA\n");
         free(pub_key_data);
@@ -1049,10 +996,8 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // IV de zerouri pentru GMAC
     unsigned char iv[12] = { 0 };
 
-    // Setează cheia și IV
     if (EVP_EncryptInit_ex(gmac_ctx, NULL, NULL, sym_key, iv) <= 0) {
         fprintf(stderr, "Failed to set key and IV for RSA\n");
         free(pub_key_data);
@@ -1062,7 +1007,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Pentru GMAC, folosim doar AAD (Additional Authenticated Data), nu criptăm nimic
     int outlen;
     if (EVP_EncryptUpdate(gmac_ctx, NULL, &outlen, pub_key_data, pub_key_len) <= 0) {
         fprintf(stderr, "Failed to process AAD for RSA\n");
@@ -1073,7 +1017,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Finalizează (nu produce output pentru GMAC)
     if (EVP_EncryptFinal_ex(gmac_ctx, NULL, &outlen) <= 0) {
         fprintf(stderr, "Failed to finalize GMAC for RSA\n");
         free(pub_key_data);
@@ -1083,7 +1026,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Obține tag-ul GMAC (16 bytes pentru AES-256-GCM)
     computed_gmac_len = 16;
     computed_gmac = (unsigned char*)malloc(computed_gmac_len);
     if (!computed_gmac) {
@@ -1105,12 +1047,10 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Eliberează resursele care nu mai sunt necesare
     EVP_CIPHER_CTX_free(gmac_ctx);
     free(pub_key_data);
     EVP_PKEY_free(received_public_key);
 
-    // Compară GMAC-ul recalculat cu cel stocat
     if (computed_gmac_len != stored_gmac_len || memcmp(computed_gmac, stored_gmac, computed_gmac_len) != 0) {
         fprintf(stderr, "RSA GMAC verification failed: mismatch\n");
         free(computed_gmac);
@@ -1118,7 +1058,6 @@ int validate_autenticity_rsa(SecureProfile* entity)
         return 0;
     }
 
-    // Verificare reușită
     free(computed_gmac);
     PubKeyMAC_free(pub_key_mac);
 

@@ -2,7 +2,8 @@
 
 #include "secure_profile.h"
 
-SecureProfile* create_SecureProfile(const char* name, const char* password, int id) {
+SecureProfile* create_SecureProfile(const char* name, const char* password, int id) 
+{
     SecureProfile* entity = (SecureProfile*)malloc(sizeof(SecureProfile));
     if (!entity) return NULL;
 
@@ -11,13 +12,21 @@ SecureProfile* create_SecureProfile(const char* name, const char* password, int 
     entity->gmac = NULL;
     entity->gmac_len = 0;
 
+    if (password) {
+        entity->password = strdup(password);
+    }
+    else {
+        entity->password = NULL;
+    }
+
     time_t base_time = 1115240705;
     entity->generation_timestamp = base_time + 1000;
 
     return entity;
 }
 
-int generate_entity_keys(SecureProfile* entity, const char* password) {
+int generate_entity_keys(SecureProfile* entity)
+{
     EVP_PKEY_CTX* ctx = NULL;
     EVP_PKEY* temp_key = NULL;
     int ret = 0;
@@ -47,8 +56,7 @@ int generate_entity_keys(SecureProfile* entity, const char* password) {
     printf("Generated key with curve NID_X9_62_prime256v1\n");
     log_action(entity->entity_name, "Generated EC key pair successfully");
 
-    // Salvează cheile imediat în fișiere
-    if (!save_ec_keys_to_files(entity, temp_key, password)) {
+    if (!save_ec_keys_to_files(entity, temp_key)) {
         fprintf(stderr, "Failed to save EC keys\n");
         goto cleanup;
     }
@@ -61,7 +69,7 @@ cleanup:
     return ret;
 }
 
-int generate_rsa_keys(SecureProfile* entity, const char* password) {
+int generate_rsa_keys(SecureProfile* entity) {
     EVP_PKEY_CTX* ctx = NULL;
     EVP_PKEY* temp_rsa_key = NULL;
     int ret = 0;
@@ -89,8 +97,7 @@ int generate_rsa_keys(SecureProfile* entity, const char* password) {
 
     log_action(entity->entity_name, "Generated RSA 3072-bit key pair");
 
-    // Salvează cheile RSA imediat în fișiere
-    if (!save_rsa_keys_to_files(entity, temp_rsa_key, password)) {
+    if (!save_rsa_keys_to_files(entity, temp_rsa_key)) {
         fprintf(stderr, "Failed to save RSA keys\n");
         goto cleanup;
     }
@@ -103,7 +110,7 @@ cleanup:
     return ret;
 }
 
-int save_ec_keys_to_files(SecureProfile* entity, EVP_PKEY* temp_key, const char* password) {
+int save_ec_keys_to_files(SecureProfile* entity, EVP_PKEY* temp_key) {
     BIO* private_bio = NULL;
     BIO* public_bio = NULL;
     char private_path[256], public_path[256];
@@ -123,7 +130,7 @@ int save_ec_keys_to_files(SecureProfile* entity, EVP_PKEY* temp_key, const char*
     }
 
     if (!PEM_write_bio_PrivateKey(private_bio, temp_key, EVP_aes_256_cbc(),
-        (unsigned char*)password, strlen(password), NULL, NULL)) {
+        (unsigned char*)entity->password, strlen(entity->password), NULL, NULL)) {
         fprintf(stderr, "Failed to save private key\n");
         log_action(entity->entity_name, "Failed to save private key");
         goto cleanup;
@@ -144,7 +151,7 @@ cleanup:
     return ret;
 }
 
-int save_rsa_keys_to_files(SecureProfile* entity, EVP_PKEY* temp_rsa_key, const char* password) {
+int save_rsa_keys_to_files(SecureProfile* entity, EVP_PKEY* temp_rsa_key) {
     BIO* private_bio = NULL;
     BIO* public_bio = NULL;
     char private_path[256], public_path[256];
@@ -173,7 +180,7 @@ int save_rsa_keys_to_files(SecureProfile* entity, EVP_PKEY* temp_rsa_key, const 
     }
 
     if (!PEM_write_bio_RSAPrivateKey(private_bio, rsa, EVP_aes_256_cbc(),
-        (unsigned char*)password, strlen(password), NULL, NULL)) {
+        (unsigned char*)entity->password, strlen(entity->password), NULL, NULL)) {
         fprintf(stderr, "Failed to save RSA private key\n");
         log_action(entity->entity_name, "Failed to save RSA private key");
         RSA_free(rsa);
